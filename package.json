@@ -10,9 +10,6 @@
   "scripts": {
     "dev": "npm run dev --workspace @dwa/desktop",
     "build": "npm run build --workspace @dwa/vtt-ui && npm run tauri:build --workspace @dwa/desktop",
-    "check": "npm run typecheck --workspace @dwa/vtt-ui",
-    "policy:offline": "bash scripts/offline_policy_check.sh",
-    "import:fari": "bash scripts/import_fari.sh",
-    "import:gamemasterai": "bash scripts/import_gamemasterai.sh"
+    "check": "npm run typecheck --workspace @dwa/vtt-ui"
   }
 }
