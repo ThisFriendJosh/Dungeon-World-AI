@@ -21,37 +21,10 @@ apps/
   vtt-ui/       # Web UI scaffold (future Fari fork base)
 services/
   engine/       # SQL migrations and engine-related assets
-  ai/           # Offline AI architecture stub + vendor imports
+  ai/           # Offline AI architecture stub
   art/          # Offline art pipeline stub
 packages/
   shared/       # Shared schemas/types stub
-docs/
-  import-playbook.md
-scripts/
-  import_fari.sh
-  import_gamemasterai.sh
-  offline_policy_check.sh
-```
-
-## Safe import workflow (Fari + GameMasterAI)
-
-1. Read `docs/import-playbook.md`.
-2. Import Fari into `apps/vtt-ui`:
-
-```bash
-npm run import:fari -- https://github.com/ThisFriendJosh/fari-app.git
-```
-
-3. Import GameMasterAI snapshot into `services/ai/vendor/gamemasterai`:
-
-```bash
-npm run import:gamemasterai -- https://github.com/ThisFriendJosh/gamemasterai.git
-```
-
-4. Enforce offline guardrails:
-
-```bash
-npm run policy:offline
 ```
 
 ## Data model (v0)
