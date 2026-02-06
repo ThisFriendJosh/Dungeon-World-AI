@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Dungeon World AI",
+  "version": "0.1.0",
+  "identifier": "ai.dungeonworld.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev --workspace @dwa/vtt-ui",
+    "beforeBuildCommand": "npm run build --workspace @dwa/vtt-ui",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../vtt-ui/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Dungeon World AI",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["appimage", "deb", "nsis"],
+    "icon": []
+  }
+}
