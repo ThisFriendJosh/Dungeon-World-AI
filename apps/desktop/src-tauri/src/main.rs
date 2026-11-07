@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use dwa_engine::{
-    CampaignEvent, CampaignStore, CampaignSummary, CharacterSummary, CharacterUpdate, Saved,
+    CampaignEvent, CampaignStore, CampaignSummary, CharacterSummary, CharacterUpdate, FariScene,
+    Saved, TabletopState,
 };
 use tauri::{Manager, State};
 
@@ -68,6 +69,25 @@ fn recent_events(
     store.recent_events(&campaign_id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn load_tabletop(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<TabletopState, String> {
+    store.load_tabletop(&campaign_id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn save_tabletop(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    scene: FariScene,
+    expected_revision: i64,
+) -> Result<Saved<TabletopState>, String> {
+    store
+        .save_tabletop(&campaign_id, scene, expected_revision)
+        .map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -85,7 +105,9 @@ fn main() {
             create_character,
             update_character,
             load_characters,
-            recent_events
+            recent_events,
+            load_tabletop,
+            save_tabletop
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dungeon World AI");

@@ -2,18 +2,20 @@
 
 An offline-first desktop virtual tabletop for solo play.
 
-## Current milestone: saved campaign workspace
+## Current milestone: saved campaigns and local tabletop scenes
 
 - Create and pick saved campaigns, with last-save times.
 - Add characters and edit their name, class, level, ability scores, HP, armor class, inventory, conditions, and notes.
 - Save character changes and reload them across restarts.
-- See the latest 50 campaign and character changes.
+- See the latest 50 campaign, character, and scene changes.
+- Keep NPCs, places, objects, and notes on a saved tabletop scene board.
+- Organize table cards and GM notes with pin, color, and manual turn flags.
 - Get explicit feedback for failed saves and event-log recovery.
 - Preserve separate campaigns even when their names normalize to the same slug.
 
 Character statistics are manually recorded. Class features and derived values are entered by the player. New sheets show placeholder values of 10 until the player records the actual values.
 
-The [repository review](docs/repository-review.md) records the roles of Fari, GameMasterAI, Tauri, dnd-data, and optional local-model/voice tools, followed by the next integration milestones. AI and artwork services currently expose architecture stubs.
+The [repository review](docs/repository-review.md) records the roles of Fari, GameMasterAI, Tauri, dnd-data, and optional local-model/voice tools, followed by the next integration milestones. The first Fari scene/index-card adapter is implemented; see [local tabletop scenes](docs/local-tabletop.md). AI and artwork services currently expose architecture stubs.
 
 ## Layout
 
@@ -63,6 +65,7 @@ Campaign commands require the desktop app. The browser preview explains this in 
 ```sh
 npm run check
 npm run test:engine
+npm run test:ui
 npm run check:rust
 npm run build:ui
 ```
@@ -93,7 +96,9 @@ npm run build
 
 Tauri builds the UI once using its before-build hook. Windows uses the automatic tauri.windows.conf.json override to select an NSIS .exe installer. Linux uses AppImage and deb targets.
 
-Outputs are under apps/desktop/src-tauri/target/release/bundle/. Full installer launch verification and Linux packaging are release checks.
+On Windows the root dev/build scripts default to a Rust build cache under LOCALAPPDATA/DungeonWorldAI/cargo-target, avoiding OneDrive read-only directory attributes. An explicit CARGO_TARGET_DIR is respected. Windows installer outputs are under the cache's release/bundle/ folder. Other systems use apps/desktop/src-tauri/target/release/bundle/. Full installer launch verification and Linux packaging are release checks.
+
+In Windows PowerShell, use npm.cmd ci and npm.cmd run dev when the npm.ps1 wrapper is blocked by the local script policy.
 
 ## License
 

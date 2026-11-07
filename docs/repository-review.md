@@ -7,7 +7,7 @@ Reviewed 2026-11-07 against the connected ThisFriendJosh GitHub account.
 | Repository | Evidence from the repository | Role in Dungeon-World-AI | Integration status |
 | --- | --- | --- | --- |
 | [Dungeon-World-AI](https://github.com/ThisFriendJosh/Dungeon-World-AI) | Tauri 2 desktop shell, Vite/TypeScript UI, Rust/SQLite persistence, local AI interfaces | Main application repository | Campaign workspace implemented in this change |
-| [fari-app](https://github.com/ThisFriendJosh/fari-app) | React 18 VTT, sheets, dice, drawing; AGPL license; Liveblocks and Sentry dependencies; Node 16 engine declaration | Source for a future local tabletop and sheet adapter | Review completed; import pending |
+| [fari-app](https://github.com/ThisFriendJosh/fari-app) | React 18 VTT, sheets, dice, drawing; AGPL license; Liveblocks and Sentry dependencies; Node 16 engine declaration | Source for a future local tabletop and sheet adapter | Scene/index-card adapter implemented; drawing and dice pending |
 | [gamemasterai](https://github.com/ThisFriendJosh/gamemasterai) | AI DM/notetaker design; Express/Vue/MongoDB/OpenAI stack; actual LICENSE is MIT, while package.json says UNLICENSED | Reference for narration and campaign memory modules behind the existing proposal interface | Review completed; local adaptation pending |
 | [tauri](https://github.com/ThisFriendJosh/tauri) | Cross-platform Rust/webview desktop framework | Desktop packaging foundation, consumed through published dependencies | Already used by the application |
 | [dnd-data](https://github.com/ThisFriendJosh/dnd-data) | JSON backgrounds, classes, items, monsters, species, spells; source publisher/book metadata; README lists 2014/2024 and third-party books | Candidate for a separate, versioned compendium importer | Requires content provenance and edition mapping before packaging |
@@ -36,7 +36,7 @@ Sheet values are manually recorded. Character creation does not calculate class 
 
 ## Following milestones
 
-1. **Local tabletop adapter.** Select Fari's scene/sheet/dice pieces and adapt them behind the existing campaign API. Audit Liveblocks, Sentry, external images, translation loading, and environment access. Keep the desktop port/output contract.
+1. **Local tabletop adapter.** Scene/index-card adaptation is implemented in the Tabletop view. Continue with Fari's drawing and dice pieces behind the existing campaign API. Audit Liveblocks, Sentry, external images, translation loading, and environment access. Keep the desktop port/output contract.
 2. **Local DM proposal loop.** Adapt GameMasterAI's useful DM/notetaker patterns behind services/ai/src. Feed canonical events and an explicit summary into a local model; present proposals for validation before committing engine events.
 3. **Compendium packs.** Add source and edition metadata, distinguish 5e 2014/2024 content, and implement an importer with a small reviewed dataset first.
 4. **Artwork and voice.** Persist generated assets and their specifications with the appropriate game/player state. Evaluate optional Whisper input and model-specific BitNet support separately.
@@ -47,4 +47,4 @@ Each milestone should retain campaign reload compatibility and rerun persistence
 
 The source-policy scanner detects direct URL literals and known cloud SDK imports in runtime source directories. It is a development guard; dynamically assembled URLs and dependencies require a separate runtime network audit before the full tabletop/AI integration ships.
 
-Verified in this environment: all seven Rust persistence/recovery tests, the desktop cargo check, the UI TypeScript check and production bundle, formatting, and positive/negative offline-source checks. An attempted browser smoke check could not connect to the headless browser test endpoint, so interactive UI behavior has not been verified here. A native installer launch and Linux packaging remain separate release checks.
+Verified in this environment: all 13 Rust persistence/recovery tests and three scene-adapter tests, the desktop cargo check, the UI TypeScript check and production bundle, formatting, and positive/negative offline-source checks. An attempted browser smoke check could not connect to the headless browser test endpoint, so interactive scene behavior still requires a manual desktop check. Campaign/character save and reopen were subsequently verified in the user's native app. A native installer launch and Linux packaging remain separate release checks.
