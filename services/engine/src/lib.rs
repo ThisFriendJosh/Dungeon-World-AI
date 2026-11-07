@@ -16,9 +16,23 @@ use uuid::Uuid;
 mod dice;
 pub use dice::{DiceMode, DiceRequest, DiceRoll, DiceTerm};
 
+mod compendium;
+pub use compendium::{
+    ContentDetail, ContentEntry, ContentImport, ContentPack, ContentQuery, ContentResults,
+};
+
+mod rules;
+pub use rules::{HouseRules, RulesCalculation, RulesConfig, RulesProfile, RulesQuery, RulesState};
+
+mod board;
+pub use board::{ImageImport, SceneBoard, SceneImage, SceneSummary};
+
 mod tabletop;
 pub use tabletop::{FariScene, SceneCard, SceneCards, SceneTextBlock, TabletopState};
 
+const MIGRATION_COMPENDIUM: &str = include_str!("../migrations/005_compendium.sql");
+const MIGRATION_RULES: &str = include_str!("../migrations/004_campaign_rules.sql");
+const MIGRATION_SCENE_LIBRARY: &str = include_str!("../migrations/003_scene_library.sql");
 const MIGRATION_TABLETOP: &str = include_str!("../migrations/002_tabletop.sql");
 const MIGRATION: &str = include_str!("../migrations/001_init.sql");
 // Serializes mutations and JSONL mirror repairs within this desktop process.
@@ -180,6 +194,9 @@ fn connect(path: &Path, create: bool) -> Result<Connection, EngineError> {
         conn.execute_batch(MIGRATION)?;
     }
     conn.execute_batch(MIGRATION_TABLETOP)?;
+    conn.execute_batch(MIGRATION_SCENE_LIBRARY)?;
+    conn.execute_batch(MIGRATION_RULES)?;
+    conn.execute_batch(MIGRATION_COMPENDIUM)?;
     Ok(conn)
 }
 
@@ -364,6 +381,7 @@ impl CampaignStore {
             "INSERT INTO campaigns (id, name, slug, master_seed, art_profile_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, '{}', ?5, ?5)",
             params![id, name, slug, 42_i64, timestamp],
         )?;
+        rules::initialize_new_rules(&tx, &id, &timestamp)?;
         record_event(
             &tx,
             &id,

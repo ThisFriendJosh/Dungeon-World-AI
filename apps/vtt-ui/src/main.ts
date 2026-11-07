@@ -1,18 +1,32 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { CampaignSummary, CharacterSummary, CampaignEvent, Saved } from "./types";
 import "./style.css";
+import "./tabletop.css";
+import {ArtLibrary} from "./art-library";
+import {TABLE_ART} from "./bundled-art";
+import "./art-library.css";
+import {RulesPanel} from "./rules-panel";
+import type {RulesState} from "./rules-panel";
+import "./rules.css";
+import {Compendium} from "./compendium";
+import "./compendium.css";
 import { SceneEditor } from "./tabletop";
 import type { TabletopState } from "./fari/scene";
 import { escapeHtml as escape } from "./html";
+import type {SceneSummary,SceneImage} from "./board-model";
 import { DicePanel } from "./dice-panel";
 import type { DiceRoll } from "./dice-types";
 import { describeRoll } from "./dice-format";
 const dice = new DicePanel();
 const tabletop = new SceneEditor();
+const rules = new RulesPanel();
+const compendium = new Compendium();
+const artLibrary = new ArtLibrary();
 
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("Missing app root");
 const root: HTMLElement = app;
+if(TABLE_ART)root.style.setProperty("--table-art",'url("'+TABLE_ART.path+'")');
 const abilities = ["str", "dex", "con", "int", "wis", "cha"] as const;
 const state = {
   campaigns: [] as CampaignSummary[],
@@ -22,7 +36,7 @@ const state = {
   selectedId: null as string | null,
   busy: false,
   dirty: false,
-  view: "character" as "character" | "tabletop" | "dice",
+  view: "character" as "character" | "tabletop" | "dice" | "art" | "rules" | "compendium",
   message: "",
   messageKind: "info"
 };
@@ -34,7 +48,7 @@ const selected = () => state.characters.find(c => c.id === state.selectedId);
 const field = (id: string) => root.querySelector<HTMLInputElement | HTMLTextAreaElement>("#" + id)!;
 const lines = (value: unknown[]) => value.map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
 const listValue = (id: string) => field(id).value.split("\n").map(v => v.trim()).filter(Boolean);
-const allowNavigation = () => (!state.dirty && !tabletop.dirty) || window.confirm("Discard the unsaved changes?");
+const allowNavigation = () => (!state.dirty && !tabletop.dirty && !rules.dirty) || window.confirm("Discard the unsaved changes?");
 const status = (message: string, kind = "info") => {
   state.message = message; state.messageKind = kind;
   const region = root.querySelector<HTMLElement>("#status");
@@ -59,20 +73,24 @@ async function action(work: () => Promise<void>) {
   }
 }
 
-async function snapshot(campaign: CampaignSummary) {
-  const [characters, events, campaigns, board, rolls] = await Promise.all([
+async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
+  const [characters, events, campaigns, board, rolls, scenes, images, rulesState] = await Promise.all([
     invoke<CharacterSummary[]>("load_characters", { campaignId: campaign.id }),
     invoke<CampaignEvent[]>("recent_events", { campaignId: campaign.id }),
     invoke<CampaignSummary[]>("list_campaigns"),
     invoke<TabletopState>("load_tabletop", { campaignId: campaign.id }),
-    invoke<DiceRoll[]>("load_dice_rolls", { campaignId: campaign.id })
+    invoke<DiceRoll[]>("load_dice_rolls", { campaignId: campaign.id }),
+    invoke<SceneSummary[]>("list_tabletop_scenes", { campaignId: campaign.id }),
+    invoke<SceneImage[]>("list_scene_images", { campaignId: campaign.id }),
+    invoke<RulesState>("load_rules_settings", {campaignId:campaign.id})
   ]);
   state.campaign = campaigns.find(c => c.id === campaign.id) ?? campaign;
   state.campaigns = campaigns;
   state.characters = characters;
   state.events = events;
-  tabletop.load(board);
+  tabletop.load(board,scenes,images,preserveTabletop);
   dice.load(campaign.id, rolls);
+  rules.load(rulesState,preserveTabletop);
   if (!characters.some(c => c.id === state.selectedId)) state.selectedId = characters[0]?.id ?? null;
   state.dirty = false;
 }
@@ -86,12 +104,12 @@ async function openCampaign(slug: string) {
 }
 
 // Keep a committed mutation visible even if the following read fails.
-async function afterSave(campaign: CampaignSummary, message: string, warning: string | null) {
+async function afterSave(campaign: CampaignSummary, message: string, warning: string | null, preserveTabletop = false) {
   state.campaign = campaign;
   state.dirty = false;
   state.message = warning ?? message;
   state.messageKind = warning ? "warning" : "success";
-  try { await snapshot(campaign); }
+  try { await snapshot(campaign,preserveTabletop); }
   catch (error) {
     state.message += " Saved successfully, but refreshing the campaign failed: " + String(error);
     state.messageKind = "warning";
@@ -132,6 +150,9 @@ function sheet(character: CharacterSummary): string {
 }
 
 function render() {
+  root.classList.toggle("tabletop-active",state.view==="tabletop");
+  root.classList.toggle("tabletop-focus",state.view==="tabletop"&&tabletop.focused);
+  if(state.campaign)compendium.selectCampaign(state.campaign.id);
   const character = selected();
   root.innerHTML = `
     <header class="app-header"><div class="brand-mark" aria-hidden="true">D</div>
@@ -150,10 +171,10 @@ function render() {
       </aside>
       <section class="campaign-workspace" aria-label="Current campaign">
         ${state.campaign ? `
-          <div class="campaign-heading"><p class="eyebrow">Campaign workspace · 5e core</p><h2>${escape(state.campaign.name)}</h2>
+          <div class="campaign-heading"><p class="eyebrow">Campaign workspace · ${escape(rules.label())}</p><h2>${escape(state.campaign.name)}</h2>
             <p class="subtle">${state.characters.length} character${state.characters.length === 1 ? "" : "s"} · Campaign and character changes are saved locally.</p></div>
-          <div class="workspace-tabs" aria-label="Campaign views"><button data-workspace-view="character" aria-pressed="${state.view === "character"}">Characters</button><button data-workspace-view="tabletop" aria-pressed="${state.view === "tabletop"}">Tabletop</button><button data-workspace-view="dice" aria-pressed="${state.view === "dice"}">Dice</button></div>
-          ${state.view === "tabletop" ? tabletop.html() : state.view === "dice" ? dice.html(state.characters) : `
+          <div class="workspace-tabs" aria-label="Campaign views"><button data-workspace-view="character" aria-pressed="${state.view === "character"}">Characters</button><button data-workspace-view="tabletop" aria-pressed="${state.view === "tabletop"}">Tabletop</button><button data-workspace-view="dice" aria-pressed="${state.view === "dice"}">Dice</button><button data-workspace-view="art" aria-pressed="${state.view === "art"}">Art & codex</button><button data-workspace-view="rules" aria-pressed="${state.view === "rules"}">Rules</button><button data-workspace-view="compendium" aria-pressed="${state.view === "compendium"}">Compendium</button></div>
+          ${state.view === "tabletop" ? tabletop.html(state.characters,dice.html(state.characters)) : state.view === "dice" ? dice.html(state.characters) : state.view === "art" ? artLibrary.html() : state.view === "rules" ? rules.html() : state.view === "compendium" ? compendium.html() : `
           <div class="party-tabs" aria-label="Characters">${state.characters.map(c => `
             <button class="${c.id === state.selectedId ? "active" : ""}" data-character="${escape(c.id)}" aria-pressed="${c.id === state.selectedId}">${escape(c.name)}<span>Level ${c.level} ${escape(c.className)}</span></button>`).join("")}</div>
           <section class="sheet-panel">${character ? sheet(character) : '<div class="empty-state"><p class="eyebrow">The party begins here</p><h2>Add your first character</h2><p>Create a character below, then fill in their sheet.</p></div>'}</section>
@@ -165,30 +186,41 @@ function render() {
           <section class="history"><div class="section-heading"><h2>Campaign activity</h2><span class="subtle">Latest 50 changes</span></div>
             <ol>${state.events.map(event => `<li><span class="event-marker" aria-hidden="true"></span><div><strong>${escape(eventLabel(event))}</strong><time datetime="${escape(event.createdAt)}">${escape(date(event.createdAt))}</time></div></li>`).join("")}</ol>
           </section>
-        ` : '<div class="welcome"><p class="eyebrow">A place for every adventure</p><h2>Open a world.<br>Continue your story.</h2><p>Choose a saved campaign or create one to begin keeping your party, character sheets, and campaign history together.</p><div class="welcome-rule"></div><p class="subtle">AI narration and the full tabletop are planned for a later milestone.</p></div>'}
+        ` : '<div class="welcome"><p class="eyebrow">A place for every adventure</p><h2>Open a world.<br>Continue your story.</h2><p>Choose a saved campaign or create one to begin keeping your party, character sheets, and campaign history together.</p><div class="welcome-rule"></div><p class="subtle">Open the tabletop to place your party, reveal a map, and continue your adventure.</p></div>'}
       </section>
     </div>`;
 
   root.querySelectorAll<HTMLButtonElement>("[data-workspace-view]").forEach(button => button.addEventListener("click", () => {
     if (state.busy || button.dataset.workspaceView === state.view || !allowNavigation()) return;
-    tabletop.discard(); state.dirty = false; state.message = "";
-    state.view = button.dataset.workspaceView as "character" | "tabletop" | "dice";
+    tabletop.discard(); rules.discard(); state.dirty = false; state.message = "";
+    state.view = button.dataset.workspaceView as "character" | "tabletop" | "dice" | "art" | "rules" | "compendium";
     render();
   }));
   if (state.campaign && state.view === "tabletop") {
     const campaign = state.campaign;
-    tabletop.bind(root, { campaignId: campaign.id, action, render, isBusy: () => state.busy,
+    tabletop.bind(root, { campaignId: campaign.id, characters:state.characters, action, render, isBusy: () => state.busy,
       onDirty: () => status("Unsaved scene changes.", "warning"),
       onError: message => status(message, "error"),
-      onSaved: warning => afterSave(campaign, "Scene saved.", warning) });
+      onSaved: (warning,message) => afterSave(campaign, message??"Scene saved.", warning) });
   }
 
-  if (state.campaign && state.view === "dice") {
+  if (state.campaign && (state.view === "dice" || state.view === "tabletop")) {
     const campaign = state.campaign;
     dice.bind(root, { campaignId: campaign.id, action, isBusy: () => state.busy,
-      onSaved: (roll, warning) => afterSave(campaign, "Roll saved: " + describeRoll(roll), warning) });
+      onSaved: (roll, warning) => afterSave(campaign, "Roll saved: " + describeRoll(roll), warning,true) });
   }
 
+  if(state.campaign&&state.view==="compendium"){
+    const campaign=state.campaign;
+    compendium.bind(root,{campaignId:campaign.id,action,render,isActive:()=>state.view==="compendium"&&state.campaign?.id===campaign.id,onError:message=>status(message,"error"),onMessage:message=>status(message),onSaved:warning=>afterSave(campaign,"Reference collections imported.",warning)});
+  }
+  if(state.campaign&&state.view==="rules"){
+    const campaign=state.campaign;
+    rules.bind(root,{campaignId:campaign.id,action,render,isActive:()=>state.view==="rules",onDirty:()=>status("Unsaved rules profile.","warning"),onError:message=>status(message,"error"),onSaved:warning=>afterSave(campaign,"Rules profile saved.",warning)});
+  }
+  if(state.campaign&&state.view==="art"){
+    artLibrary.bind(root,{render,onBackground:id=>{if(!allowNavigation())return;if(tabletop.useBundledBackground(id)){state.view="tabletop";status("Background selected. Save scene to keep it.","warning");render();}},onToken:id=>{if(!allowNavigation())return;if(tabletop.addBundledToken(id)){state.view="tabletop";status("Token placed. Set its game values and save the scene.","warning");render();}else status("This scene already contains 100 pieces.","error");}});
+  }
   root.querySelector("#refresh")?.addEventListener("click", () => {
     if (!allowNavigation()) return;
     void action(async () => {
@@ -262,7 +294,11 @@ function render() {
 
 function eventLabel(event: CampaignEvent): string {
   const character = state.characters.find(c => c.id === event.payload.characterId);
+  if (event.eventType === "content.imported") return "Reference collection imported: " + event.payload.name;
+  if (event.eventType === "rules.changed") return "Campaign rules profile changed";
   if (event.eventType === "dice.rolled") return "Dice roll: " + event.payload.expression + " = " + event.payload.total;
+  if (event.eventType === "scene.selected") return "Scene selected: " + (event.payload.name??"Scene");
+  if (event.eventType === "image.imported") return "Artwork imported: " + (event.payload.name??"Image");
   if (event.eventType === "scene.saved") return "Scene saved";
   if (event.eventType === "campaign.created") return "Campaign created";
   if (event.eventType === "character.created") return "Character added: " + (character?.name ?? event.payload.name ?? "Adventurer");
@@ -271,7 +307,7 @@ function eventLabel(event: CampaignEvent): string {
 }
 
 window.addEventListener("beforeunload", event => {
-  if (state.dirty || tabletop.dirty) { event.preventDefault(); event.returnValue = ""; }
+  if (state.dirty || tabletop.dirty || rules.dirty) { event.preventDefault(); event.returnValue = ""; }
 });
 render();
 if (isTauri()) {

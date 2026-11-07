@@ -240,6 +240,7 @@ fn test_scene() -> FariScene {
         version: 3,
         last_updated: 1_794_064_878,
         notes: "Recover the Sunshard.".into(),
+        board: None,
     }
 }
 
@@ -520,3 +521,12 @@ fn dice_history_returns_the_latest_fifty_in_event_order() {
         .collect();
     assert_eq!(actual, expected);
 }
+
+#[path = "board_tests.rs"]
+mod board_tests;
+
+#[path = "rules_tests.rs"]
+mod rules_tests;
+
+#[path = "compendium_tests.rs"]
+mod compendium_tests;

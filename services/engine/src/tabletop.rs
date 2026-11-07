@@ -44,6 +44,8 @@ pub struct FariScene {
     pub version: i64,
     pub last_updated: i64,
     pub notes: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board: Option<super::SceneBoard>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,7 +56,7 @@ pub struct TabletopState {
     pub updated_at: Option<String>,
 }
 
-fn validate_scene(scene: &FariScene) -> Result<(), EngineError> {
+pub(crate) fn validate_scene(scene: &FariScene) -> Result<(), EngineError> {
     validate_name(&scene.name, "Scene name")?;
     if scene.version != 3
         || scene.last_updated < 0
@@ -113,6 +115,9 @@ fn validate_scene(scene: &FariScene) -> Result<(), EngineError> {
         {
             return Err(EngineError::Invalid("Invalid scene text block.".into()));
         }
+    }
+    if let Some(board) = &scene.board {
+        super::board::validate_board(board, &mut add_id)?;
     }
     if serde_json::to_vec(scene)
         .map_err(|e| EngineError::Invalid(e.to_string()))?
@@ -175,6 +180,9 @@ impl CampaignStore {
         }
         let dir = self.locate(campaign_id)?;
         let mut conn = connect(&dir, false)?;
+        if let Some(board) = &scene.board {
+            super::board::validate_board_links(&conn, campaign_id, board)?;
+        }
         let timestamp = now();
         let tx = conn.transaction()?;
         let current = tx
@@ -193,6 +201,17 @@ impl CampaignStore {
             .ok_or_else(|| EngineError::Invalid("Scene revision limit reached.".into()))?;
         let json =
             serde_json::to_string(&scene).map_err(|e| EngineError::Invalid(e.to_string()))?;
+        let count: u32 = tx.query_row(
+            "SELECT COUNT(*) FROM tabletop_scenes WHERE campaign_id=?1 AND scene_id != ?2",
+            params![campaign_id, scene.id],
+            |r| r.get(0),
+        )?;
+        if count >= 40 {
+            return Err(EngineError::Invalid(
+                "A campaign supports up to 40 scenes.".into(),
+            ));
+        }
+        tx.execute("INSERT INTO tabletop_scenes (campaign_id,scene_id,scene_json,updated_at) VALUES (?1,?2,?3,?4) ON CONFLICT(campaign_id,scene_id) DO UPDATE SET scene_json=excluded.scene_json,updated_at=excluded.updated_at",params![campaign_id,scene.id,json,timestamp])?;
         if current == 0 {
             tx.execute("INSERT INTO tabletops (campaign_id, scene_json, revision, updated_at) VALUES (?1, ?2, ?3, ?4)",
                 params![campaign_id, json, revision, timestamp])?;
