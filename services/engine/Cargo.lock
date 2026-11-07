@@ -82,6 +82,7 @@ name = "dwa-engine"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "getrandom",
  "rusqlite",
  "serde",
  "serde_json",

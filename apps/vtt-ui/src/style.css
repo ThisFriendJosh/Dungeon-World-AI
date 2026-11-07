@@ -125,3 +125,25 @@ h2 { font-family: Georgia, serif; font-weight: normal; font-size: 1.5rem; }
 .card-options .quiet { margin-left: auto; }
 .scene-save-note { margin-top: 1rem; }
 @media (max-width: 650px) { .tabletop-panel { padding: 1rem; } .tabletop-panel .section-heading { align-items: start; flex-direction: column; } }
+
+
+select { display: block; width: 100%; margin-top: .45rem; padding: .65rem .75rem; background: #101a15; color: #f3efe5; border: 1px solid #45594c; border-radius: 5px; font: inherit; }
+select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.dice-panel { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 1.5rem; margin-bottom: 2rem; }
+.dice-panel > .subtle { margin: .8rem 0 1.2rem; }
+.dice-presets { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.dice-presets button { min-width: 48px; color: var(--gold); }
+.dice-help { margin: 1rem 0; }
+.dice-history-heading { margin-top: 2rem; }
+.dice-history-heading h2 { font-size: 1.25rem; }
+.dice-history { list-style: none; padding: 0; margin: 0; }
+.dice-result { background: #101a15; border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+.dice-result-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+.dice-result-heading strong { overflow-wrap: anywhere; }
+.dice-result-heading output { font: bold 2rem Georgia, serif; color: var(--gold); min-width: 2.5rem; text-align: right; }
+.dice-breakdown { list-style: none; padding: 0; margin: .7rem 0; color: #b9cbb9; font-size: .85rem; line-height: 1.8; }
+.dice-breakdown li { overflow-wrap: anywhere; }
+.dice-result time { color: var(--muted); font-size: .7rem; }
+@media (max-width: 650px) { .dice-panel { padding: 1rem; } .dice-history-heading { flex-wrap: wrap; } }
+
+.dice-result-heading > div { min-width: 0; overflow-wrap: anywhere; }

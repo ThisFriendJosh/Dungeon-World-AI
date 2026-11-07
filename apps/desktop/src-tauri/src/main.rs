@@ -4,6 +4,7 @@ use dwa_engine::{
     CampaignEvent, CampaignStore, CampaignSummary, CharacterSummary, CharacterUpdate, FariScene,
     Saved, TabletopState,
 };
+use dwa_engine::{DiceRequest, DiceRoll};
 use tauri::{Manager, State};
 
 #[tauri::command]
@@ -88,6 +89,26 @@ fn save_tabletop(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn roll_dice(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: DiceRequest,
+) -> Result<Saved<DiceRoll>, String> {
+    store
+        .roll_dice(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_dice_rolls(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<DiceRoll>, String> {
+    store
+        .load_dice_rolls(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -107,7 +128,9 @@ fn main() {
             load_characters,
             recent_events,
             load_tabletop,
-            save_tabletop
+            save_tabletop,
+            roll_dice,
+            load_dice_rolls
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dungeon World AI");
