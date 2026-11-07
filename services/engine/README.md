@@ -1,7 +1,13 @@
-# services/engine
+# Campaign persistence engine
 
-Engine persistence assets for v0.
+Standalone Rust library used by the Tauri command layer.
 
-- `migrations/001_init.sql` defines campaign, character, and event tables.
-- Runtime currently lives in Tauri Rust commands in `apps/desktop/src-tauri/src/main.rs`.
-- Future milestone: split to standalone engine service process with explicit API.
+- src/lib.rs defines campaign, character, and event operations.
+- migrations/001_init.sql remains compatible with existing v0 saves.
+- src/tests.rs exercises persistence, validation, transaction rollback, isolation, and log recovery using disposable fixtures under target/.
+
+Run cargo test --manifest-path services/engine/Cargo.toml from the repository root.
+
+SQLite is canonical; events.log is a rebuildable JSONL mirror. Failed mirror refreshes return warnings alongside successfully committed mutations. Records and their events share a transaction.
+
+The UI uses manual 5e character sheet values. This library validates basic data shapes and numeric ranges; a future rules engine will adjudicate derived game mechanics.

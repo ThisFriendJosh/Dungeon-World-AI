@@ -2,14 +2,14 @@
   "name": "dungeon-world-ai",
   "private": true,
   "version": "0.1.0",
-  "workspaces": [
-    "apps/*",
-    "services/*",
-    "packages/*"
-  ],
+  "workspaces": ["apps/*", "services/*", "packages/*"],
   "scripts": {
     "dev": "npm run dev --workspace @dwa/desktop",
-    "build": "npm run build --workspace @dwa/vtt-ui && npm run tauri:build --workspace @dwa/desktop",
-    "check": "npm run typecheck --workspace @dwa/vtt-ui"
+    "build": "npm run tauri:build --workspace @dwa/desktop",
+    "build:ui": "npm run build --workspace @dwa/vtt-ui",
+    "check": "npm run typecheck --workspace @dwa/vtt-ui && npm run policy:offline",
+    "test:engine": "cargo test --manifest-path services/engine/Cargo.toml",
+    "check:rust": "cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml",
+    "policy:offline": "node scripts/offline_policy_check.mjs"
   }
 }

@@ -1,89 +1,244 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { CampaignSummary, CharacterSummary, CampaignEvent, Saved } from "./types";
+import "./style.css";
 
-type CampaignSummary = {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type CharacterSummary = {
-  id: string;
-  campaignId: string;
-  name: string;
-  className: string;
-  level: number;
-  statsJson: string;
-  inventoryJson: string;
-  conditionsJson: string;
-  progressionJson: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-const app = document.querySelector<HTMLDivElement>("#app");
+const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("Missing app root");
-
+const root: HTMLElement = app;
+const abilities = ["str", "dex", "con", "int", "wis", "cha"] as const;
 const state = {
+  campaigns: [] as CampaignSummary[],
   campaign: null as CampaignSummary | null,
-  characters: [] as CharacterSummary[]
+  characters: [] as CharacterSummary[],
+  events: [] as CampaignEvent[],
+  selectedId: null as string | null,
+  busy: false,
+  dirty: false,
+  message: "",
+  messageKind: "info"
+};
+const htmlEntities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escape = (value: unknown): string => String(value ?? "").replace(/[&<>"']/g, c => htmlEntities[c]);
+const parse = <T,>(value: string, fallback: T): T => {
+  try { return JSON.parse(value) as T; } catch { return fallback; }
+};
+const date = (value: string) => new Date(value).toLocaleString();
+const selected = () => state.characters.find(c => c.id === state.selectedId);
+const field = (id: string) => root.querySelector<HTMLInputElement | HTMLTextAreaElement>("#" + id)!;
+const lines = (value: unknown[]) => value.map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
+const listValue = (id: string) => field(id).value.split("\n").map(v => v.trim()).filter(Boolean);
+const allowNavigation = () => !state.dirty || window.confirm("Discard the unsaved changes to this character?");
+const status = (message: string, kind = "info") => {
+  state.message = message; state.messageKind = kind;
+  const region = root.querySelector<HTMLElement>("#status");
+  if (region) { region.textContent = message; region.dataset.kind = kind; }
 };
 
-const render = () => {
-  app.innerHTML = `
-    <h1>Dungeon World AI (v0)</h1>
+async function action(work: () => Promise<void>) {
+  if (state.busy) return;
+  state.busy = true;
+  root.setAttribute("aria-busy", "true");
+  const buttons = [...root.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+  const fields = [...root.querySelectorAll<HTMLFieldSetElement>("fieldset:not(:disabled)")];
+  buttons.forEach(b => { b.disabled = true; });
+  fields.forEach(f => { f.disabled = true; });
+  try { await work(); }
+  catch (error) { status(String(error), "error"); }
+  finally {
+    state.busy = false;
+    root.setAttribute("aria-busy", "false");
+    buttons.forEach(b => { if (b.isConnected) b.disabled = false; });
+    fields.forEach(f => { if (f.isConnected) f.disabled = false; });
+  }
+}
 
-    <section>
-      <h2>Create Campaign</h2>
-      <input id="campaignName" placeholder="Campaign name" />
-      <button id="createCampaign">Create</button>
-      <button id="loadCampaign">Load by slug</button>
-      <input id="campaignSlug" placeholder="campaign-slug" />
-      <pre id="campaignState">${state.campaign ? JSON.stringify(state.campaign, null, 2) : "No campaign loaded"}</pre>
-    </section>
+async function snapshot(campaign: CampaignSummary) {
+  const [characters, events, campaigns] = await Promise.all([
+    invoke<CharacterSummary[]>("load_characters", { campaignId: campaign.id }),
+    invoke<CampaignEvent[]>("recent_events", { campaignId: campaign.id }),
+    invoke<CampaignSummary[]>("list_campaigns")
+  ]);
+  state.campaign = campaigns.find(c => c.id === campaign.id) ?? campaign;
+  state.campaigns = campaigns;
+  state.characters = characters;
+  state.events = events;
+  if (!characters.some(c => c.id === state.selectedId)) state.selectedId = characters[0]?.id ?? null;
+  state.dirty = false;
+}
 
-    <section>
-      <h2>Create Character</h2>
-      <input id="characterName" placeholder="Character name" ${!state.campaign ? "disabled" : ""} />
-      <input id="characterClass" placeholder="Class" value="Adventurer" ${!state.campaign ? "disabled" : ""} />
-      <button id="createCharacter" ${!state.campaign ? "disabled" : ""}>Create</button>
-      <button id="refreshCharacters" ${!state.campaign ? "disabled" : ""}>Refresh</button>
-      <pre id="characterState">${JSON.stringify(state.characters, null, 2)}</pre>
-    </section>
-  `;
+async function openCampaign(slug: string) {
+  const result = await invoke<Saved<CampaignSummary>>("load_campaign", { slug });
+  await snapshot(result.value);
+  state.message = result.warning ?? "Campaign loaded from this device.";
+  state.messageKind = result.warning ? "warning" : "info";
+  render();
+}
 
-  document.getElementById("createCampaign")?.addEventListener("click", async () => {
-    const name = (document.getElementById("campaignName") as HTMLInputElement).value.trim();
-    if (!name) return;
-    state.campaign = await invoke<CampaignSummary>("create_campaign", { name });
-    state.characters = [];
-    render();
+// Keep a committed mutation visible even if the following read fails.
+async function afterSave(campaign: CampaignSummary, message: string, warning: string | null) {
+  state.campaign = campaign;
+  state.dirty = false;
+  state.message = warning ?? message;
+  state.messageKind = warning ? "warning" : "success";
+  try { await snapshot(campaign); }
+  catch (error) {
+    state.message += " Saved successfully, but refreshing the campaign failed: " + String(error);
+    state.messageKind = "warning";
+  }
+  render();
+}
+
+function sheet(character: CharacterSummary): string {
+  const stats = parse<Record<string, unknown>>(character.statsJson, {});
+  const progression = parse<Record<string, unknown>>(character.progressionJson, {});
+  const inventory = parse<unknown[]>(character.inventoryJson, []);
+  const conditions = parse<unknown[]>(character.conditionsJson, []);
+  return `
+    <form id="sheetForm">
+      <div class="section-heading"><div><p class="eyebrow">Character sheet</p><h2>${escape(character.name)}</h2></div>
+        <button class="primary" type="submit">Save character</button></div>
+      <p class="subtle">Record your table’s values. Class features and derived statistics are entered manually.</p>
+      <fieldset class="sheet-fields"><legend class="sr-only">Character details</legend>
+        <div class="identity">
+          <label>Name<input id="sheetName" required maxlength="120" value="${escape(character.name)}"></label>
+          <label>Class<input id="sheetClass" required maxlength="120" value="${escape(character.className)}"></label>
+          <label>Level<input id="sheetLevel" type="number" required min="1" max="20" value="${character.level}"></label>
+        </div>
+        <div class="vitals">
+          <label>Current HP<input id="hp" type="number" required min="0" max="9999" value="${escape(stats.hp ?? 10)}"></label>
+          <label>Maximum HP<input id="maxHp" type="number" required min="1" max="9999" value="${escape(stats.maxHp ?? 10)}"></label>
+          <label>Armor class<input id="armorClass" type="number" required min="0" max="99" value="${escape(stats.armorClass ?? 10)}"></label>
+        </div>
+        <div class="abilities">${abilities.map(key => `<label>${key.toUpperCase()}<input id="${key}" type="number" required min="1" max="30" value="${escape(stats[key] ?? 10)}"></label>`).join("")}</div>
+        <p class="subtle">New sheets start with placeholder values of 10. Set them to your character’s actual values before saving.</p>
+        <div class="two-columns">
+          <label>Inventory <span class="hint">One item per line</span><textarea id="inventory" rows="6">${escape(lines(inventory))}</textarea></label>
+          <label>Conditions <span class="hint">One condition per line</span><textarea id="conditions" rows="6">${escape(lines(conditions))}</textarea></label>
+        </div>
+        <label>Character notes<textarea id="notes" rows="4">${escape(progression.notes ?? "")}</textarea></label>
+      </fieldset>
+    </form>`;
+}
+
+function render() {
+  const character = selected();
+  root.innerHTML = `
+    <header class="app-header"><div class="brand-mark" aria-hidden="true">D</div>
+      <div><p class="eyebrow">Your world. Your table.</p><h1>Dungeon World AI</h1></div>
+      <span class="offline-badge">${isTauri() ? "Saved on this device" : "Desktop preview"}</span></header>
+    <div id="status" role="status" aria-live="polite" data-kind="${escape(state.messageKind)}">${escape(state.message)}</div>
+    <div class="workspace">
+      <aside class="campaign-panel"><div class="section-heading"><h2>Campaigns</h2><button id="refresh" class="quiet">Refresh</button></div>
+        <nav aria-label="Saved campaigns" class="campaign-list">${state.campaigns.length ? state.campaigns.map(c => `
+          <button class="campaign-card ${c.id === state.campaign?.id ? "active" : ""}" data-slug="${escape(c.slug)}" ${c.id === state.campaign?.id ? 'aria-current="true"' : ""}>
+            <strong>${escape(c.name)}</strong><span>Last saved ${escape(date(c.updatedAt))}</span></button>`).join("") : '<p class="empty-note">No campaigns yet. Begin a new adventure below.</p>'}
+        </nav>
+        <form id="campaignForm"><fieldset><legend>Begin an adventure</legend>
+          <label>Campaign name<input id="campaignName" required maxlength="120" placeholder="e.g. Aerathis"></label>
+          <button class="primary" type="submit">Create campaign</button></fieldset></form>
+      </aside>
+      <section class="campaign-workspace" aria-label="Current campaign">
+        ${state.campaign ? `
+          <div class="campaign-heading"><p class="eyebrow">Campaign workspace · 5e core</p><h2>${escape(state.campaign.name)}</h2>
+            <p class="subtle">${state.characters.length} character${state.characters.length === 1 ? "" : "s"} · Campaign and character changes are saved locally.</p></div>
+          <div class="party-tabs" aria-label="Characters">${state.characters.map(c => `
+            <button class="${c.id === state.selectedId ? "active" : ""}" data-character="${escape(c.id)}" aria-pressed="${c.id === state.selectedId}">${escape(c.name)}<span>Level ${c.level} ${escape(c.className)}</span></button>`).join("")}</div>
+          <section class="sheet-panel">${character ? sheet(character) : '<div class="empty-state"><p class="eyebrow">The party begins here</p><h2>Add your first character</h2><p>Create a character below, then fill in their sheet.</p></div>'}</section>
+          <form id="characterForm" class="new-character"><fieldset><legend>Add a character</legend>
+            <label>Name<input id="characterName" required maxlength="120" placeholder="Character name"></label>
+            <label>Class<input id="characterClass" required maxlength="120" placeholder="e.g. Barbarian"></label>
+            <button type="submit">Add character</button></fieldset></form>
+          <section class="history"><div class="section-heading"><h2>Campaign activity</h2><span class="subtle">Latest 50 changes</span></div>
+            <ol>${state.events.map(event => `<li><span class="event-marker" aria-hidden="true"></span><div><strong>${escape(eventLabel(event))}</strong><time datetime="${escape(event.createdAt)}">${escape(date(event.createdAt))}</time></div></li>`).join("")}</ol>
+          </section>
+        ` : '<div class="welcome"><p class="eyebrow">A place for every adventure</p><h2>Open a world.<br>Continue your story.</h2><p>Choose a saved campaign or create one to begin keeping your party, character sheets, and campaign history together.</p><div class="welcome-rule"></div><p class="subtle">AI narration and the full tabletop are planned for a later milestone.</p></div>'}
+      </section>
+    </div>`;
+
+  root.querySelector("#refresh")?.addEventListener("click", () => {
+    if (!allowNavigation()) return;
+    void action(async () => {
+      if (state.campaign) await openCampaign(state.campaign.slug);
+      else { state.campaigns = await invoke<CampaignSummary[]>("list_campaigns"); render(); }
+    });
   });
-
-  document.getElementById("loadCampaign")?.addEventListener("click", async () => {
-    const slug = (document.getElementById("campaignSlug") as HTMLInputElement).value.trim();
-    if (!slug) return;
-    state.campaign = await invoke<CampaignSummary>("load_campaign", { slug });
-    state.characters = await invoke<CharacterSummary[]>("load_characters", { campaignId: state.campaign.id });
+  root.querySelectorAll<HTMLButtonElement>("[data-slug]").forEach(button => button.addEventListener("click", () => {
+    if (!allowNavigation()) return;
+    void action(() => openCampaign(button.dataset.slug!));
+  }));
+  root.querySelectorAll<HTMLButtonElement>("[data-character]").forEach(button => button.addEventListener("click", () => {
+    if (state.busy || !allowNavigation()) return;
+    state.selectedId = button.dataset.character!;
+    state.dirty = false;
+    state.message = "";
     render();
+  }));
+  root.querySelector("#campaignForm")?.addEventListener("submit", event => {
+    event.preventDefault();
+    if (!allowNavigation()) return;
+    const name = field("campaignName").value.trim();
+    void action(async () => {
+      const result = await invoke<Saved<CampaignSummary>>("create_campaign", { name });
+      state.selectedId = null; state.characters = []; state.events = [];
+      await afterSave(result.value, "Campaign created.", result.warning);
+    });
   });
-
-  document.getElementById("createCharacter")?.addEventListener("click", async () => {
-    if (!state.campaign) return;
-    const name = (document.getElementById("characterName") as HTMLInputElement).value.trim();
-    const className = (document.getElementById("characterClass") as HTMLInputElement).value.trim() || "Adventurer";
-    if (!name) return;
-    await invoke<CharacterSummary>("create_character", { campaignId: state.campaign.id, name, className });
-    state.characters = await invoke<CharacterSummary[]>("load_characters", { campaignId: state.campaign.id });
-    render();
+  root.querySelector("#characterForm")?.addEventListener("submit", event => {
+    event.preventDefault();
+    if (!state.campaign || !allowNavigation()) return;
+    const campaign = state.campaign;
+    const name = field("characterName").value.trim();
+    const className = field("characterClass").value.trim();
+    void action(async () => {
+      const result = await invoke<Saved<CharacterSummary>>("create_character", { campaignId: campaign.id, name, className });
+      state.characters.push(result.value); state.selectedId = result.value.id;
+      await afterSave(campaign, "Character created. Fill in the sheet and save your changes.", result.warning);
+    });
   });
-
-  document.getElementById("refreshCharacters")?.addEventListener("click", async () => {
-    if (!state.campaign) return;
-    state.characters = await invoke<CharacterSummary[]>("load_characters", { campaignId: state.campaign.id });
-    render();
+  const form = root.querySelector<HTMLFormElement>("#sheetForm");
+  form?.addEventListener("input", () => { state.dirty = true; status("Unsaved character changes.", "warning"); });
+  form?.addEventListener("submit", event => {
+    event.preventDefault();
+    const character = selected();
+    if (!state.campaign || !character) return;
+    const campaign = state.campaign;
+    const stats = parse<Record<string, unknown>>(character.statsJson, {});
+    for (const key of [...abilities, "hp", "maxHp", "armorClass"]) stats[key] = Number(field(key).value);
+    if (Number(stats.hp) > Number(stats.maxHp)) { status("Current HP cannot exceed maximum HP.", "error"); return; }
+    const progression = parse<Record<string, unknown>>(character.progressionJson, {});
+    progression.notes = field("notes").value;
+    // Keep structured inventory/condition entries untouched when their display has not been edited.
+    const inventory = field("inventory").value === lines(parse<unknown[]>(character.inventoryJson, []))
+      ? character.inventoryJson : JSON.stringify(listValue("inventory"));
+    const conditions = field("conditions").value === lines(parse<unknown[]>(character.conditionsJson, []))
+      ? character.conditionsJson : JSON.stringify(listValue("conditions"));
+    const update = {
+      name: field("sheetName").value.trim(), className: field("sheetClass").value.trim(),
+      level: Number(field("sheetLevel").value), statsJson: JSON.stringify(stats),
+      inventoryJson: inventory, conditionsJson: conditions, progressionJson: JSON.stringify(progression)
+    };
+    void action(async () => {
+      const result = await invoke<Saved<CharacterSummary>>("update_character", { campaignId: campaign.id, characterId: character.id, update });
+      state.characters = state.characters.map(c => c.id === result.value.id ? result.value : c);
+      await afterSave(campaign, "Character saved.", result.warning);
+    });
   });
-};
+}
 
+function eventLabel(event: CampaignEvent): string {
+  const character = state.characters.find(c => c.id === event.payload.characterId);
+  if (event.eventType === "campaign.created") return "Campaign created";
+  if (event.eventType === "character.created") return "Character added: " + (character?.name ?? event.payload.name ?? "Adventurer");
+  if (event.eventType === "character.updated") return "Character saved: " + (character?.name ?? "Adventurer");
+  return event.eventType;
+}
+
+window.addEventListener("beforeunload", event => {
+  if (state.dirty) { event.preventDefault(); event.returnValue = ""; }
+});
 render();
+if (isTauri()) {
+  void action(async () => { state.campaigns = await invoke<CampaignSummary[]>("list_campaigns"); render(); });
+} else {
+  status("Open the desktop app to create or load campaigns. This browser view previews the interface.", "info");
+}
