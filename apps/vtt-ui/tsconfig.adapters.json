@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "types": [],
+    "rootDir": "src",
+    "outDir": "../../.cache/adapter-tests"
+  },
+  "include": ["src/fari/scene.ts", "src/html.ts"]
+}

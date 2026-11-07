@@ -104,3 +104,24 @@ h2 { font-family: Georgia, serif; font-weight: normal; font-size: 1.5rem; }
   .sheet-panel { padding: 1rem; }
   .sheet-panel .section-heading { align-items: start; flex-direction: column; }
 }
+
+
+.workspace-tabs { display: flex; gap: .7rem; margin: 1.5rem 0; border-bottom: 1px solid var(--line); padding-bottom: 1rem; }
+.workspace-tabs button[aria-pressed="true"], .scene-groups button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+.tabletop-panel { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 1.5rem; margin-bottom: 2rem; }
+.tabletop-panel > form > .subtle { margin-bottom: 1.2rem; }
+.scene-notes { margin-top: 1.2rem; }
+.scene-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin: 1.5rem 0; align-items: center; }
+.scene-groups { display: flex; gap: .5rem; flex-wrap: wrap; }
+.scene-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; }
+.scene-card { padding: 1rem; border: 1px solid var(--line); border-top: 4px solid var(--card-accent); background: #111d16; border-radius: 7px; min-width: 0; }
+.scene-card label { margin-top: .8rem; }
+.scene-card .card-heading label { margin-top: 0; }
+.card-heading { display: grid; grid-template-columns: minmax(0, 1fr) 50px; gap: .75rem; }
+.card-color input { padding: .2rem; min-height: 39px; cursor: pointer; }
+.card-options { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: 1rem; }
+.card-options label { display: flex; gap: .5rem; align-items: center; margin: 0; font-size: .75rem; }
+.card-options input { display: inline; width: auto; margin: 0; }
+.card-options .quiet { margin-left: auto; }
+.scene-save-note { margin-top: 1rem; }
+@media (max-width: 650px) { .tabletop-panel { padding: 1rem; } .tabletop-panel .section-heading { align-items: start; flex-direction: column; } }

@@ -13,6 +13,10 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
+mod tabletop;
+pub use tabletop::{FariScene, SceneCard, SceneCards, SceneTextBlock, TabletopState};
+
+const MIGRATION_TABLETOP: &str = include_str!("../migrations/002_tabletop.sql");
 const MIGRATION: &str = include_str!("../migrations/001_init.sql");
 // Serializes mutations and JSONL mirror repairs within this desktop process.
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -172,6 +176,7 @@ fn connect(path: &Path, create: bool) -> Result<Connection, EngineError> {
     if create {
         conn.execute_batch(MIGRATION)?;
     }
+    conn.execute_batch(MIGRATION_TABLETOP)?;
     Ok(conn)
 }
 
