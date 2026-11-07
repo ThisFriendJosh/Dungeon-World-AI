@@ -4,7 +4,8 @@ use dwa_engine::{
     CampaignEvent, CampaignStore, CampaignSummary, CharacterSummary, CharacterUpdate, FariScene,
     Saved, TabletopState,
 };
-use dwa_engine::{DiceRequest, DiceRoll};
+use dwa_engine::{DiceRequest, DiceRoll, ImageImport, SceneImage, SceneSummary};
+use dwa_engine::{RulesCalculation, RulesConfig, RulesQuery, RulesState};
 use tauri::{Manager, State};
 
 #[tauri::command]
@@ -109,6 +110,133 @@ fn load_dice_rolls(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn list_tabletop_scenes(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<SceneSummary>, String> {
+    store
+        .list_tabletop_scenes(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn select_tabletop_scene(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    scene_id: String,
+    expected_revision: i64,
+) -> Result<Saved<TabletopState>, String> {
+    store
+        .select_tabletop_scene(&campaign_id, &scene_id, expected_revision)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn list_scene_images(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<SceneImage>, String> {
+    store
+        .list_scene_images(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_scene_image(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    image_id: String,
+) -> Result<String, String> {
+    store
+        .load_scene_image(&campaign_id, &image_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn import_scene_image(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: ImageImport,
+) -> Result<Saved<SceneImage>, String> {
+    store
+        .import_scene_image(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_rules_settings(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<RulesState, String> {
+    store
+        .load_rules_settings(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn save_rules_settings(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    config: RulesConfig,
+    expected_revision: i64,
+) -> Result<Saved<RulesState>, String> {
+    store
+        .save_rules_settings(&campaign_id, config, expected_revision)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn calculate_rules(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    query: RulesQuery,
+) -> Result<RulesCalculation, String> {
+    store
+        .calculate_rules(&campaign_id, query)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn import_content(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::ContentImport,
+) -> Result<Saved<dwa_engine::ContentPack>, String> {
+    store
+        .import_content(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn list_content_packs(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<dwa_engine::ContentPack>, String> {
+    store
+        .list_content_packs(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn list_content_books(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<String>, String> {
+    store
+        .list_content_books(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn search_content(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    query: dwa_engine::ContentQuery,
+) -> Result<dwa_engine::ContentResults, String> {
+    store
+        .search_content(&campaign_id, query)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_content_entry(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    entry_id: String,
+) -> Result<dwa_engine::ContentDetail, String> {
+    store
+        .load_content_entry(&campaign_id, &entry_id)
+        .map_err(|e| e.to_string())
+}
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -130,7 +258,20 @@ fn main() {
             load_tabletop,
             save_tabletop,
             roll_dice,
-            load_dice_rolls
+            load_dice_rolls,
+            list_tabletop_scenes,
+            select_tabletop_scene,
+            list_scene_images,
+            load_scene_image,
+            import_scene_image,
+            load_rules_settings,
+            save_rules_settings,
+            calculate_rules,
+            import_content,
+            list_content_packs,
+            list_content_books,
+            search_content,
+            load_content_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dungeon World AI");

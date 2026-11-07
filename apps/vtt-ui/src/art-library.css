@@ -1,0 +1,68 @@
+
+.workspace-tabs { flex-wrap:wrap; }
+.welcome { position:relative;margin-top:1rem;padding:3rem 2rem;border:1px solid #92703f;border-radius:12px;background:linear-gradient(90deg,#131710e8,#12170fc9),var(--table-art);background-size:cover;background-position:center;box-shadow:0 10px 25px #0006; }
+.oak-table { background-image:linear-gradient(90deg,#281b10e8,#342414e8),var(--table-art);background-size:cover;background-position:center; }
+.oak-table .table-title { padding:1rem;margin:-.25rem -.25rem 1rem;border-radius:8px;background:linear-gradient(90deg,#17150ee8,#22180c85),var(--table-art);background-position:center 42%;background-size:cover;border:1px solid #9d7b4566; }
+.sheet-panel { color:#2f281d;background:radial-gradient(ellipse at 15% 10%,#f0e4c8,#dfcca5);border-color:#a58b5b;box-shadow:inset 0 0 30px #8b6e342b,0 8px 20px #0004; }
+.sheet-panel label { color:#55452b; }
+.sheet-panel .eyebrow { color:#785a28; }
+.sheet-panel .subtle { color:#6e634d; }
+.sheet-panel input,.sheet-panel textarea { color:#30271a;background:#f6eacd;border-color:#9b875e; }
+.sheet-panel .abilities label { color:#765923; }
+.sheet-panel input::placeholder,.sheet-panel textarea::placeholder { color:#7c735f; }
+.supplied-presets { grid-template-columns:repeat(2,1fr); }
+.supplied-thumb { height:96px; }
+.supplied-thumb img,.supplied-thumb svg { width:100%;height:100%;object-fit:cover;display:block; }
+.supplied-thumb span { font-size:.6rem;line-height:1.3; }
+.background-alignment { margin-top:.8rem;font-size:.73rem; }
+.background-alignment summary { cursor:pointer;color:#d7bd88; }
+.art-library { padding:1.5rem;background:linear-gradient(140deg,#241d15,#142019);border:1px solid #7f6843;border-radius:11px; }
+.art-library-heading { display:flex;align-items:start;justify-content:space-between;gap:1rem;margin-bottom:1.1rem; }
+.art-library-heading h2 { font-size:1.9rem;color:#e9d3a8; }
+.art-library-heading .subtle { margin-top:.5rem; }
+.art-library-heading label { flex:0 1 260px; }
+.art-filters { display:flex;flex-wrap:wrap;gap:.4rem;margin:1rem 0; }
+.art-filters button { font-size:.76rem;padding:.5rem .7rem; }
+.art-filters button[aria-pressed="true"] { background:#bfa168;color:#1a2118;border-color:#dfc087; }
+.art-filters small { opacity:.7;margin-left:.3rem; }
+.art-reference-note { padding:.8rem 1rem;margin:1rem 0 1.4rem;border-left:2px solid #be9b59;color:#c3b79a;background:#0e1b13a8;font-size:.78rem;line-height:1.6; }
+.art-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:1rem; }
+.art-card { min-width:0;overflow:hidden;border:1px solid #7c6743;border-radius:7px;background:#e8d6b2;box-shadow:0 3px 8px #0006;display:flex;flex-direction:column; }
+.art-cover { border:0;border-bottom:1px solid #78623c;border-radius:0;width:100%;height:220px;padding:0;display:block;background:radial-gradient(#d6c8aa,#a58f6d);overflow:hidden; }
+.art-cover img,.art-cover svg { display:block;width:100%;height:100%;object-fit:contain; }
+.art-cover:hover img,.art-cover:hover svg { filter:brightness(1.05); }
+.art-card-content { padding:1rem;display:flex;flex:1;flex-direction:column; }
+.art-card h3 { font:1.1rem Georgia,serif;margin:.25rem 0 .55rem;color:#342719;line-height:1.35; }
+.art-card .eyebrow { color:#87652c;font-size:.6rem; }
+.art-card .subtle { color:#716045;font-size:.72rem; }
+.art-card-actions { display:flex;flex-wrap:wrap;gap:.4rem;margin-top:auto;padding-top:.9rem; }
+.art-card-actions button { font-size:.7rem;padding:.4rem .5rem;background:#383322; }
+.art-viewer { width:min(1400px,94vw);max-height:94vh;padding:1rem 1.2rem;background:#17231a;color:#f0dfbd;border:1px solid #d4b77b;border-radius:10px; }
+.art-viewer::backdrop { background:#070a07de; }
+.art-viewer header { display:flex;justify-content:space-between;gap:1rem;align-items:start; }
+.art-viewer h2 { font-size:1.5rem; }
+.art-viewer > .subtle { margin:.8rem 0; }
+.art-viewer-toolbar { display:flex;justify-content:space-between;gap:.5rem;align-items:center;margin:.8rem 0;color:#aaa48e;font-size:.75rem; }
+.art-viewer-toolbar button { padding:.4rem .6rem;font-size:.75rem; }
+.art-viewer-image { max-height:72vh;overflow:auto;background:#0c130d;text-align:center;border:1px solid #786842; }
+.art-viewer-image img { display:block;max-width:100%;max-height:72vh;object-fit:contain;margin:auto; }
+.art-viewer-image.full-size img { max-width:none;max-height:none; }
+@media(max-width:650px){.art-library{padding:1rem}.art-library-heading{flex-direction:column}.art-library-heading label{flex:auto;width:100%}.art-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}.art-cover{height:180px}.art-card-content{padding:.7rem}.art-card h3{font-size:.95rem}.art-card-actions button{flex:1}.art-viewer{padding:.8rem}.art-viewer h2{font-size:1.1rem}}
+@media(max-width:420px){.art-grid{grid-template-columns:1fr}.art-cover{height:250px}}
+/* Keep the play surface prominent while retaining campaign navigation. */
+.tabletop-active .app-header{padding:.8rem 1.5rem}
+.tabletop-active .campaign-heading{margin-bottom:.6rem}
+.tabletop-active .campaign-heading>.subtle{display:none}
+.tabletop-active .workspace-tabs{margin:.65rem 0;padding-bottom:.65rem}
+.tabletop-active .campaign-heading>h2{font-size:1.7rem}
+.tabletop-active .campaign-heading .eyebrow{margin-bottom:.25rem}
+.tabletop-active .oak-table .table-title{padding:.75rem;margin-bottom:.75rem}
+.tabletop-active .scene-library{padding:.6rem;margin-bottom:.75rem}
+.tabletop-active .scene-library label{font-size:.75rem}
+.tabletop-active .scene-library input,.tabletop-active .scene-library select{padding:.45rem .6rem}
+.tabletop-focus .app-header,.tabletop-focus .campaign-panel,.tabletop-focus .campaign-heading{display:none}
+.tabletop-focus .workspace{grid-template-columns:minmax(0,1fr);max-width:none}
+.tabletop-focus .campaign-workspace{padding:.5rem}
+.tabletop-focus .workspace-tabs{margin:.1rem 0 .5rem;padding-bottom:.5rem}
+.tabletop-focus .workspace-tabs button{font-size:.8rem;padding:.4rem .7rem}
+@media(min-width:700px) and (max-width:1200px){.tabletop-active .scene-library{flex-wrap:nowrap}.tabletop-active .scene-library .scene-name-field{flex-basis:auto}}
