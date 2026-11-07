@@ -13,6 +13,9 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
+mod dice;
+pub use dice::{DiceMode, DiceRequest, DiceRoll, DiceTerm};
+
 mod tabletop;
 pub use tabletop::{FariScene, SceneCard, SceneCards, SceneTextBlock, TabletopState};
 

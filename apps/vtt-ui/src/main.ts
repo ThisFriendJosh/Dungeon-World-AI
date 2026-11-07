@@ -4,6 +4,10 @@ import "./style.css";
 import { SceneEditor } from "./tabletop";
 import type { TabletopState } from "./fari/scene";
 import { escapeHtml as escape } from "./html";
+import { DicePanel } from "./dice-panel";
+import type { DiceRoll } from "./dice-types";
+import { describeRoll } from "./dice-format";
+const dice = new DicePanel();
 const tabletop = new SceneEditor();
 
 const app = document.querySelector<HTMLElement>("#app");
@@ -18,7 +22,7 @@ const state = {
   selectedId: null as string | null,
   busy: false,
   dirty: false,
-  view: "character" as "character" | "tabletop",
+  view: "character" as "character" | "tabletop" | "dice",
   message: "",
   messageKind: "info"
 };
@@ -56,17 +60,19 @@ async function action(work: () => Promise<void>) {
 }
 
 async function snapshot(campaign: CampaignSummary) {
-  const [characters, events, campaigns, board] = await Promise.all([
+  const [characters, events, campaigns, board, rolls] = await Promise.all([
     invoke<CharacterSummary[]>("load_characters", { campaignId: campaign.id }),
     invoke<CampaignEvent[]>("recent_events", { campaignId: campaign.id }),
     invoke<CampaignSummary[]>("list_campaigns"),
-    invoke<TabletopState>("load_tabletop", { campaignId: campaign.id })
+    invoke<TabletopState>("load_tabletop", { campaignId: campaign.id }),
+    invoke<DiceRoll[]>("load_dice_rolls", { campaignId: campaign.id })
   ]);
   state.campaign = campaigns.find(c => c.id === campaign.id) ?? campaign;
   state.campaigns = campaigns;
   state.characters = characters;
   state.events = events;
   tabletop.load(board);
+  dice.load(campaign.id, rolls);
   if (!characters.some(c => c.id === state.selectedId)) state.selectedId = characters[0]?.id ?? null;
   state.dirty = false;
 }
@@ -146,8 +152,8 @@ function render() {
         ${state.campaign ? `
           <div class="campaign-heading"><p class="eyebrow">Campaign workspace · 5e core</p><h2>${escape(state.campaign.name)}</h2>
             <p class="subtle">${state.characters.length} character${state.characters.length === 1 ? "" : "s"} · Campaign and character changes are saved locally.</p></div>
-          <div class="workspace-tabs" aria-label="Campaign views"><button data-workspace-view="character" aria-pressed="${state.view === "character"}">Characters</button><button data-workspace-view="tabletop" aria-pressed="${state.view === "tabletop"}">Tabletop</button></div>
-          ${state.view === "tabletop" ? tabletop.html() : `
+          <div class="workspace-tabs" aria-label="Campaign views"><button data-workspace-view="character" aria-pressed="${state.view === "character"}">Characters</button><button data-workspace-view="tabletop" aria-pressed="${state.view === "tabletop"}">Tabletop</button><button data-workspace-view="dice" aria-pressed="${state.view === "dice"}">Dice</button></div>
+          ${state.view === "tabletop" ? tabletop.html() : state.view === "dice" ? dice.html(state.characters) : `
           <div class="party-tabs" aria-label="Characters">${state.characters.map(c => `
             <button class="${c.id === state.selectedId ? "active" : ""}" data-character="${escape(c.id)}" aria-pressed="${c.id === state.selectedId}">${escape(c.name)}<span>Level ${c.level} ${escape(c.className)}</span></button>`).join("")}</div>
           <section class="sheet-panel">${character ? sheet(character) : '<div class="empty-state"><p class="eyebrow">The party begins here</p><h2>Add your first character</h2><p>Create a character below, then fill in their sheet.</p></div>'}</section>
@@ -166,7 +172,7 @@ function render() {
   root.querySelectorAll<HTMLButtonElement>("[data-workspace-view]").forEach(button => button.addEventListener("click", () => {
     if (state.busy || button.dataset.workspaceView === state.view || !allowNavigation()) return;
     tabletop.discard(); state.dirty = false; state.message = "";
-    state.view = button.dataset.workspaceView as "character" | "tabletop";
+    state.view = button.dataset.workspaceView as "character" | "tabletop" | "dice";
     render();
   }));
   if (state.campaign && state.view === "tabletop") {
@@ -175,6 +181,12 @@ function render() {
       onDirty: () => status("Unsaved scene changes.", "warning"),
       onError: message => status(message, "error"),
       onSaved: warning => afterSave(campaign, "Scene saved.", warning) });
+  }
+
+  if (state.campaign && state.view === "dice") {
+    const campaign = state.campaign;
+    dice.bind(root, { campaignId: campaign.id, action, isBusy: () => state.busy,
+      onSaved: (roll, warning) => afterSave(campaign, "Roll saved: " + describeRoll(roll), warning) });
   }
 
   root.querySelector("#refresh")?.addEventListener("click", () => {
@@ -202,7 +214,7 @@ function render() {
     void action(async () => {
       const result = await invoke<Saved<CampaignSummary>>("create_campaign", { name });
       state.selectedId = null; state.characters = []; state.events = [];
-      tabletop.load({scene:null, revision:0, updatedAt:null}); state.view="character";
+      tabletop.load({scene:null, revision:0, updatedAt:null}); dice.load(result.value.id, []); state.view="character";
       await afterSave(result.value, "Campaign created.", result.warning);
     });
   });
@@ -250,6 +262,7 @@ function render() {
 
 function eventLabel(event: CampaignEvent): string {
   const character = state.characters.find(c => c.id === event.payload.characterId);
+  if (event.eventType === "dice.rolled") return "Dice roll: " + event.payload.expression + " = " + event.payload.total;
   if (event.eventType === "scene.saved") return "Scene saved";
   if (event.eventType === "campaign.created") return "Campaign created";
   if (event.eventType === "character.created") return "Character added: " + (character?.name ?? event.payload.name ?? "Adventurer");

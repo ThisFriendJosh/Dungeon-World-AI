@@ -371,3 +371,152 @@ fn separate_campaigns_keep_separate_scenes() {
         .save_tabletop("missing-campaign", test_scene(), 0)
         .is_err());
 }
+
+fn dice_request() -> DiceRequest {
+    DiceRequest {
+        expression: "1d20+5".into(),
+        mode: DiceMode::Advantage,
+        character_id: None,
+        label: "Test check".into(),
+    }
+}
+
+#[test]
+fn dice_rolls_preserve_faces_totals_actor_and_label_after_reopen() {
+    let f = Fixture::new();
+    let store = f.store();
+    let campaign = store.create_campaign("Dice round trip").unwrap().value;
+    let character = store
+        .create_character(&campaign.id, "Orrek", "Barbarian")
+        .unwrap()
+        .value;
+    let mut request = dice_request();
+    request.character_id = Some(character.id.clone());
+    let result = store.roll_dice(&campaign.id, request).unwrap();
+    assert!(result.warning.is_none(), "{:?}", result.warning);
+    let roll = result.value;
+    assert_eq!(roll.actor_name.as_deref(), Some("Orrek"));
+    assert_eq!(roll.label, "Test check");
+    assert_eq!(roll.expression, "1d20+5");
+    if let DiceTerm::Dice {
+        rolls,
+        kept,
+        subtotal,
+        ..
+    } = &roll.terms[0]
+    {
+        assert_eq!(rolls.len(), 2);
+        assert!(rolls.iter().all(|v| (1..=20).contains(v)));
+        assert_eq!(kept.iter().filter(|v| **v).count(), 1);
+        assert_eq!(*subtotal, i64::from(*rolls.iter().max().unwrap()));
+        assert_eq!(roll.total, subtotal + 5);
+    } else {
+        panic!("Expected dice details.");
+    }
+    drop(store);
+    let reopened = f.store();
+    assert_eq!(
+        reopened.load_dice_rolls(&campaign.id).unwrap(),
+        vec![roll.clone()]
+    );
+    let event = &reopened.recent_events(&campaign.id).unwrap()[0];
+    assert_eq!(event.event_type, "dice.rolled");
+    assert_eq!(event.payload["id"], roll.id);
+    assert_eq!(event.payload["total"], roll.total);
+    let old_name = reopened.load_dice_rolls(&campaign.id).unwrap()[0]
+        .actor_name
+        .clone();
+    reopened
+        .update_character(&campaign.id, &character.id, update())
+        .unwrap();
+    assert_eq!(
+        reopened.load_dice_rolls(&campaign.id).unwrap()[0].actor_name,
+        old_name
+    );
+}
+
+#[test]
+fn dice_requests_validate_actor_campaign_formula_and_label_without_events() {
+    let f = Fixture::new();
+    let store = f.store();
+    let a = store.create_campaign("Dice A").unwrap().value;
+    let b = store.create_campaign("Dice B").unwrap().value;
+    let character = store
+        .create_character(&a.id, "Original", "Fighter")
+        .unwrap()
+        .value;
+    let mut wrong_actor = dice_request();
+    wrong_actor.character_id = Some(character.id);
+    assert!(store.roll_dice(&b.id, wrong_actor).is_err());
+    assert!(store.roll_dice("missing", dice_request()).is_err());
+    let mut invalid = dice_request();
+    invalid.expression = "2d20+5".into();
+    assert!(store.roll_dice(&b.id, invalid).is_err());
+    let mut invalid = dice_request();
+    invalid.label = "x".repeat(121);
+    assert!(store.roll_dice(&b.id, invalid).is_err());
+    assert!(store.load_dice_rolls(&b.id).unwrap().is_empty());
+    assert!(store.load_dice_rolls(&a.id).unwrap().is_empty());
+    assert_eq!(store.recent_events(&b.id).unwrap().len(), 1);
+}
+
+#[test]
+fn failed_dice_event_insert_leaves_roll_history_unchanged() {
+    let f = Fixture::new();
+    let store = f.store();
+    let campaign = store.create_campaign("Dice atomic save").unwrap().value;
+    let first = store.roll_dice(&campaign.id, dice_request()).unwrap().value;
+    let conn = connect(&f.0.join(&campaign.slug), false).unwrap();
+    conn.execute_batch("CREATE TRIGGER reject_event BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT, 'event failed'); END;").unwrap();
+    assert!(store.roll_dice(&campaign.id, dice_request()).is_err());
+    assert_eq!(store.load_dice_rolls(&campaign.id).unwrap(), vec![first]);
+}
+
+#[test]
+fn dice_log_mirror_failure_does_not_disguise_a_saved_roll() {
+    let f = Fixture::new();
+    let store = f.store();
+    let campaign = store.create_campaign("Dice log recovery").unwrap().value;
+    let log = f.0.join(&campaign.slug).join("events.log");
+    fs::remove_file(&log).unwrap();
+    fs::create_dir(&log).unwrap();
+    let result = store.roll_dice(&campaign.id, dice_request()).unwrap();
+    assert!(result.warning.is_some());
+    assert_eq!(
+        store.load_dice_rolls(&campaign.id).unwrap(),
+        vec![result.value]
+    );
+    fs::remove_dir(&log).unwrap();
+    assert!(store
+        .load_campaign(&campaign.slug)
+        .unwrap()
+        .warning
+        .is_none());
+    assert_eq!(fs::read_to_string(log).unwrap().lines().count(), 2);
+}
+
+#[test]
+fn dice_history_returns_the_latest_fifty_in_event_order() {
+    let f = Fixture::new();
+    let store = f.store();
+    let campaign = store.create_campaign("Dice history limit").unwrap().value;
+    let mut expected = Vec::new();
+    for _ in 0..55 {
+        expected.push(
+            store
+                .roll_dice(&campaign.id, dice_request())
+                .unwrap()
+                .value
+                .id,
+        );
+    }
+    expected.reverse();
+    expected.truncate(50);
+    let actual: Vec<String> = store
+        .load_dice_rolls(&campaign.id)
+        .unwrap()
+        .into_iter()
+        .map(|r| r.id)
+        .collect();
+    assert_eq!(actual, expected);
+}

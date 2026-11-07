@@ -2,7 +2,7 @@
 
 An offline-first desktop virtual tabletop for solo play.
 
-## Current milestone: saved campaigns and local tabletop scenes
+## Current milestone: campaigns, scenes, and saved dice rolls
 
 - Create and pick saved campaigns, with last-save times.
 - Add characters and edit their name, class, level, ability scores, HP, armor class, inventory, conditions, and notes.
@@ -10,12 +10,13 @@ An offline-first desktop virtual tabletop for solo play.
 - See the latest 50 campaign, character, and scene changes.
 - Keep NPCs, places, objects, and notes on a saved tabletop scene board.
 - Organize table cards and GM notes with pin, color, and manual turn flags.
+- Roll dice with modifiers, advantage/disadvantage, visible faces, and persistent history.
 - Get explicit feedback for failed saves and event-log recovery.
 - Preserve separate campaigns even when their names normalize to the same slug.
 
 Character statistics are manually recorded. Class features and derived values are entered by the player. New sheets show placeholder values of 10 until the player records the actual values.
 
-The [repository review](docs/repository-review.md) records the roles of Fari, GameMasterAI, Tauri, dnd-data, and optional local-model/voice tools, followed by the next integration milestones. The first Fari scene/index-card adapter is implemented; see [local tabletop scenes](docs/local-tabletop.md). AI and artwork services currently expose architecture stubs.
+The [repository review](docs/repository-review.md) records the roles of Fari, GameMasterAI, Tauri, dnd-data, and optional local-model/voice tools, followed by the next integration milestones. The first Fari scene/index-card adapter is implemented; see [local tabletop scenes](docs/local-tabletop.md). The [local dice tray](docs/dice.md) adds engine-generated rolls with saved history. AI and artwork services currently expose architecture stubs.
 
 ## Layout
 
