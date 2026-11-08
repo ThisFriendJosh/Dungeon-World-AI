@@ -1,5 +1,7 @@
 # AI Dungeon Master — first local integration
 
+Latest follow-up: [native imports and clipboard](native-imports-and-clipboard.md) records the integrated Compendium document library, broader file formats, native editing commands, accurate startup diagnostics, Windows launcher, and current verification. The initial integration notes below remain a historical baseline.
+
 This development milestone connects a campaign-aware local narrator to the existing desktop app. It implements the integration code, persistence, and interface; live model/desktop verification and complete offline packaging remain release gates.
 
 Workspace update: the current working tree adds local story/reference search, typed DM read/calculation tools, GM table knowledge, PNG/SVG token assets and reversible history cleanup. See the [DM workspace guide](dm-workspace.md) for current capabilities and limits; the baseline descriptions below record the initial narrator milestone. The user's subsequent screenshot confirms one saved local reply in that initial build. It does not establish that the newer read-tool loop or a clean offline installer has passed qualification.

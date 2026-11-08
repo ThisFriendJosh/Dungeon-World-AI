@@ -19,6 +19,7 @@ pub const PROMPT_VERSION: &str = "dm-narrator-v0.3-tools";
 const CONTEXT_TOKENS: usize = 8192;
 const OUTPUT_TOKENS: usize = 1024;
 const RESPONSE_LIMIT: u64 = 1_000_000;
+const CONNECTION_DENIED: &str = "The operating system blocked the app's local AI connection";
 const INSTRUCTIONS: &str = include_str!("../prompts/dungeon-master-v0.1.md");
 const CONTRACT: &str = r#"
 ACTIVE APPLICATION CONTRACT (overrides standalone prototype behavior):
@@ -367,19 +368,25 @@ impl LocalDm {
     ) -> Result<DmProposal, String> {
         let (port, secret) = self.start()?;
         let deadline = Instant::now() + Duration::from_secs(120);
+        let mut last_error: String;
         loop {
             self.check_cancelled()?;
-            if http_json(
+            match http_json(
                 port,
                 &secret,
                 "GET",
                 "/health",
                 None,
                 Duration::from_secs(2),
-            )
-            .is_ok()
-            {
-                break;
+            ) {
+                Ok(_) => break,
+                Err(error) => {
+                    if startup_error_is_fatal(&error) {
+                        self.shutdown();
+                        return Err(format!("{error} Runtime log: {}", self.config.log_dir.join("dm-runtime.log").display()));
+                    }
+                    last_error = error;
+                }
             }
             {
                 let mut s = self
@@ -395,7 +402,7 @@ impl LocalDm {
             }
             if Instant::now() >= deadline {
                 self.shutdown();
-                return Err("The local model did not load within two minutes. Your campaign is unchanged; retry after checking the runtime log.".into());
+                return Err(format!("The local AI did not become reachable within two minutes. Last connection error: {last_error} Runtime log: {}", self.config.log_dir.join("dm-runtime.log").display()));
             }
             thread::sleep(Duration::from_millis(200));
         }
@@ -537,7 +544,7 @@ fn http_json(
     }
     let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port));
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(2))
-        .map_err(|e| format!("The local DM connection is unavailable: {e}"))?;
+        .map_err(local_connection_error)?;
     stream
         .set_write_timeout(Some(Duration::from_secs(5)))
         .map_err(|e| e.to_string())?;
@@ -570,6 +577,22 @@ fn http_json(
         }
     }
     decode_http(&bytes)
+}
+
+fn local_connection_error(error: std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::PermissionDenied || error.raw_os_error() == Some(10013) {
+        format!("{CONNECTION_DENIED} ({error}). The model can load while this connection is blocked. Open Dungeon World AI from its normal launcher outside the restricted test runner. Your action is still a draft.")
+    } else {
+        format!("The local DM connection is unavailable: {error}")
+    }
+}
+
+fn startup_error_is_fatal(error: &str) -> bool {
+    error.starts_with(CONNECTION_DENIED)
+        || error.contains("(HTTP 401)")
+        || error.contains("(HTTP 403)")
+        || error.contains("Invalid local DM response")
+        || error.contains("Unsupported local DM")
 }
 
 fn decode_http(bytes: &[u8]) -> Result<Value, String> {

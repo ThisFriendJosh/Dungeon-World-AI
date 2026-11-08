@@ -108,6 +108,8 @@ SQLite is the canonical source of truth. Campaign/character mutations and their 
 
 ## Desktop packages
 
+For an embedded Windows development build, run `npm.cmd run build:native`, then open `Start-Dungeon-World-AI.cmd` from File Explorer. See [native imports and clipboard](docs/native-imports-and-clipboard.md) for local AI connection diagnostics, Compendium document formats, and test-save configuration.
+
 ```sh
 npm run build
 ```

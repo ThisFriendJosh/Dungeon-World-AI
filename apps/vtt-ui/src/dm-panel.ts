@@ -52,7 +52,7 @@ export class DmPanel {
       <form id="dmForm"><fieldset ${this.pending?"disabled":""}>
         <label>Speak or act as<select id="dmActor"><option value="">The player / party</option>${characters.map(c=>`<option value="${e(c.id)}" ${c.id===this.actorId?"selected":""}>${e(c.name)}</option>`).join("")}</select></label>
         <label>Your action<textarea id="dmAction" rows="4" maxlength="4000" required placeholder="I approach the gatekeeper and ask about the missing caravan…">${e(this.draft)}</textarea></label>
-        <div class="dm-actions"><button class="primary" type="submit" ${!ready?"disabled":""}>Send to Dungeon Master</button>
+        <div class="dm-actions"><button class="primary" type="submit" ${!ready?"disabled":""}>Send to Dungeon Master</button><button type="button" data-paste-into="dmAction">Paste</button>
           ${this.latestRoll?'<button id="dmUseRoll" type="button">Use latest saved roll</button>':""}<span class="subtle">Saved on this device</span></div>
         ${last?.reply.choices.length?`<div class="dm-choices" aria-label="Possible next actions">${last.reply.choices.map((choice,index)=>`<button type="button" data-dm-choice="${index}">${e(choice)}</button>`).join("")}</div>`:""}
       </fieldset></form>

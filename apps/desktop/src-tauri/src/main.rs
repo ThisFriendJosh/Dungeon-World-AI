@@ -1,4 +1,8 @@
+#![cfg_attr(all(target_os="windows",not(test)),windows_subsystem="windows")]
+
 use std::path::PathBuf;
+mod clipboard;
+mod reference_documents;
 
 use dwa_engine::{
     CampaignEvent, CampaignStore, CampaignSummary, CharacterSummary, CharacterUpdate, FariScene,
@@ -399,6 +403,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            clipboard::read_clipboard_text,
+            clipboard::write_clipboard_text,
+            reference_documents::prepare_reference_document,
             list_campaigns,
             create_campaign,
             load_campaign,

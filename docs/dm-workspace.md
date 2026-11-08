@@ -1,5 +1,7 @@
 # Dungeon Master workspace: sources, table, assets and history
 
+The [native import and clipboard guide](native-imports-and-clipboard.md) describes the current embedded Windows launcher and document workflow.
+
 ## Local runtime versus a complete package
 
 The development app talks to an app-owned llama.cpp process on IPv4 loopback. That process loads a GGUF from disk. `dev:dm` currently discovers the existing workbench runtime and Hugging Face cache unless explicit local file overrides are set. The development UI is also served locally by Vite. None of these imply a cloud model call.
@@ -18,7 +20,7 @@ Distance results describe center-to-center straight-line and one-cell-per-diagon
 
 ## Local story/reference library
 
-Use **DM library** to import TXT, Markdown, or a version-1 JSON source pack. Sources retain title, edition, provenance, GM visibility, and passage order. The app indexes all passages locally with SQLite FTS5. Existing compendium descriptions are backfilled once, and new entries are indexed transactionally. The bundled SRD 5.2.1 is also searchable for manual/revised profiles. Explicitly mismatched 2014/2024/2e material is excluded from a selected 5e edition; unassigned/homebrew sources remain labeled for a table ruling.
+Use **Compendium → Campaign documents & DM library** to add PDF, Word DOCX, TXT, Markdown, CSV, HTML, general JSON or a version-1 source pack. Review the extracted text and metadata, then add the sources. PDF preparation uses the installed text filter or offline Windows OCR when available. Structured dnd-data arrays remain under **Reference entries**. Sources retain title, edition, provenance, GM visibility and passage order. The app indexes passages locally with SQLite FTS5. Existing compendium descriptions are backfilled once, and new entries are indexed transactionally. The bundled SRD 5.2.1 is searchable for manual/revised profiles. Explicitly mismatched 2014/2024/2e material is excluded from a selected 5e edition; unassigned/homebrew sources remain labeled for a table ruling.
 
 The source-pack importer displays any `notIndexed` notices, including scans awaiting OCR. Importing a source does not make its adventure events campaign history or create an active character sheet. Source links are provenance labels; no downloads are performed during play. Illustrations/layout and scan OCR require separate preparation.
 
@@ -52,9 +54,9 @@ Choose **Show removed entries** to restore one through the same deliberate confi
 
 ## Verification boundary
 
-The engine tests cover source/edition/campaign isolation, old-index backfill, import rollback, exact saved grid distance, bounded arithmetic, turn/roll removal/restoration, confirmation/revision checks, SVG escaping and atomic PNG/SVG/recipe storage. UI tests cover escaped content and deliberate edit controls. The new read-tool grammar and workshop rendering still need a host-native test; this environment's local TCP connection is denied with Windows error 10013 and desktop automation cannot launch its helper.
+The engine tests cover source/edition/campaign isolation, old-index backfill, import rollback, grid distance, bounded arithmetic, reversible history, SVG escaping, asset atomicity and Word extraction. Frontend tests cover document preparation/review, partial import retries, safe HTML text, clipboard selections, Compendium sections and existing escaped views. Native Windows tests successfully read a real PDF fixture with OCR. The rebuilt GUI saved/indexed/searched a test source. Native clipboard copy returned Windows Access Denied (error 5), and the file chooser did not remain open in this restricted session. The local AI connection remains denied with socket error 10013. These restrictions require a normal-host launch before clipboard, file-picker and live-model behavior can be qualified; token rendering also retains its native acceptance check.
 
-Verification in this working tree: 59 engine tests, 5 AI unit tests, and 26 UI tests pass (90 total). The separate socket integration test is explicitly ignored by default and remains blocked here. Type checking, the offline source policy, UI production build and native Rust compile check pass. A real isolated import of the seven-source pack stored 730 passages, reopened successfully, and returned local searches for Mournwell, Enki, Ilmater and Exandria. This is retrieval/persistence evidence, not a model-quality or installer certification.
+Verification in this working tree: 61 engine tests, 6 AI unit tests, 34 frontend tests and 2 Windows PDF tests pass (103 total). The separate socket integration test is ignored by default and remains blocked here. Type checking, the offline source policy and the embedded native build pass. A prior isolated import of the seven-source pack stored 730 passages, reopened successfully and returned local searches for Mournwell, Enki, Ilmater and Exandria. This is extraction/retrieval/persistence evidence; live model quality and installer qualification remain separate gates.
 
 The supplied source pack can be qualified without a model or a live campaign:
 

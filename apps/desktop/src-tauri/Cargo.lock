@@ -700,11 +700,15 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 name = "dungeon-world-ai-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "dwa-engine",
  "dwa-local-dm",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "windows",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -713,7 +717,10 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",
+ "crc32fast",
+ "flate2",
  "getrandom 0.4.3",
+ "quick-xml",
  "rusqlite",
  "serde",
  "serde_json",

@@ -11,6 +11,12 @@ tauri = { version = "2", features = [] }
 dwa-engine = { path = "../../../services/engine" }
 dwa-local-dm = { path = "../../../services/ai" }
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+base64 = "0.23.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory"] }
+windows = { version = "0.62.2", features = ["Foundation", "Globalization", "Data_Pdf", "Graphics_Imaging", "Media_Ocr", "Storage_Streams", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_Storage_IndexServer"] }
 
 [features]
 default = []
