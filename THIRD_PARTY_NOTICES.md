@@ -39,6 +39,10 @@ Bundled files: apps/vtt-ui/public/rules/srd-5.2.1.pdf, srd-5.2.1.json, attributi
 
 The application includes an adapter for the dnd-data JSON format; no dnd-data dataset or package source is bundled. Imported entries retain their publisher and source-book metadata in local campaign storage.
 
+## Optional Chromium Embedded Framework browser
+
+Scrying Pane uses CefSharp.WinForms/CefSharp.Common 156.0.150, Chromium Embedded Framework runtime win-x64 156.0.15, and System.Runtime.InteropServices.RuntimeInformation 4.3.0, obtained separately from their official NuGet packages. Setup retains package licenses, distribution README files, and Chromium credits with the prepared browser host. No browser binaries are committed to application source. Sources: https://github.com/cefsharp/CefSharp and https://github.com/chromiumembedded/cef. Component licenses remain separate from the application's AGPL license.
+
 ## Optional local image model
 
 The application can load Stability AI's SD-Turbo through an existing Python/diffusers environment. Model weights are downloaded separately by explicit setup and are not bundled in this repository or native build. The pinned model's README and LICENSE.md are retained in its model folder. Model terms: https://huggingface.co/stabilityai/sd-turbo/blob/main/LICENSE.md. Model card: https://huggingface.co/stabilityai/sd-turbo. These terms are separate from the application license and supplied campaign artwork.

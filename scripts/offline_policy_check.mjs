@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const targets = [
   "apps/vtt-ui/src", "apps/vtt-ui/index.html", "services/ai/src",
-  "services/art/worker.py", "services/engine/src", "apps/desktop/src-tauri/src"
+  "services/art/worker.py", "services/engine/src", "apps/desktop/src-tauri/src", "apps/scrying-cef"
 ];
 const allowedUrls = new Set(["http://www.w3.org/2000/svg"]);
 const findings = [];
@@ -14,7 +14,7 @@ function scan(path) {
   for (const entry of entries) {
     const file = join(path, entry.name);
     if (entry.isDirectory()) scan(file);
-    else if (/\.(ts|tsx|js|jsx|mjs|cjs|rs|css|html|py)$/.test(file)) check(file);
+    else if (/\.(ts|tsx|js|jsx|mjs|cjs|rs|css|html|py|cs)$/.test(file)) check(file);
   }
 }
 function check(file) {

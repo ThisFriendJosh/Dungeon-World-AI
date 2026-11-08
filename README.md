@@ -120,6 +120,10 @@ On Windows the root dev/build scripts default to a Rust build cache under LOCALA
 
 In Windows PowerShell, use npm.cmd ci and npm.cmd run dev when the npm.ps1 wrapper is blocked by the local script policy.
 
+## Timers, browser and 3D dice
+
+The first campaign tabs are Game Timers & Calculators, Scrying Pane, and 3D Dice. Timers save real/game clocks, calculators preview game arithmetic, and animated dice retain the engine's recorded results. The CEF browser installs separately through `Setup-Scrying-Pane.cmd`; website browsing is explicit and separate from offline gameplay. See [game tools, Scrying Pane and dice](docs/game-tools-scrying-dice.md).
+
 ## Artwork
 
 Art & codex supports campaign image uploads, multiple categories, and editable custom tags. The token workshop draws sprites with a local image model and keeps frame/color controls separate. Open `Setup-Local-Art.cmd` once to download the model; imports work without it. See [art library and AI sprites](docs/art-library-and-sprites.md).
