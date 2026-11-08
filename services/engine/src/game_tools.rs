@@ -57,6 +57,12 @@ pub enum TimerOperation {
     Advance {
         seconds: u64,
     },
+    SubtractTime {
+        seconds: u64,
+    },
+    SetTime {
+        seconds: u64,
+    },
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -152,6 +158,25 @@ fn apply(state: &mut ToolsState, op: &TimerOperation, at: i64) -> Result<(), Eng
                     }
                 }
             }
+        }
+        TimerOperation::SubtractTime { seconds } => {
+            let ms = seconds
+                .checked_mul(1000)
+                .filter(|v| *v > 0)
+                .ok_or_else(|| {
+                    EngineError::Invalid("Choose a positive amount of time to remove.".into())
+                })?;
+            state.game_time_ms = state.game_time_ms.checked_sub(ms).ok_or_else(|| {
+                EngineError::Invalid("Cannot remove more time than the game clock contains.".into())
+            })?;
+        }
+        TimerOperation::SetTime { seconds } => {
+            state.game_time_ms = seconds
+                .checked_mul(1000)
+                .filter(|v| *v <= MAX_MS)
+                .ok_or_else(|| {
+                    EngineError::Invalid("Set the game clock between zero and 3650 days.".into())
+                })?;
         }
         TimerOperation::Remove { id, confirmed } => {
             if !confirmed {
@@ -258,6 +283,7 @@ impl CampaignStore {
             ));
         }
         let at = Utc::now().timestamp_millis();
+        let previous_game_time_ms = state.game_time_ms;
         apply(&mut state, &request.operation, at)?;
         let revision = revision
             .checked_add(1)
@@ -268,7 +294,7 @@ impl CampaignStore {
             &tx,
             campaign_id,
             "tools.changed",
-            &json!({"operation":request.operation,"revision":revision,"gameTimeMs":state.game_time_ms}),
+            &json!({"operation":request.operation,"revision":revision,"previousGameTimeMs":previous_game_time_ms,"gameTimeMs":state.game_time_ms}),
             &timestamp,
         )?;
         tx.commit()?;
@@ -454,6 +480,135 @@ pub fn calculate_damage(q: DamageQuery) -> Result<DamageResult, EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn clock_corrections_set_and_subtract_without_rewinding_timers() {
+        let mut state = ToolsState {
+            game_time_ms: 3_600_000,
+            timers: vec![timer("game", "countdown"), timer("real", "countdown")],
+        };
+        let mut complete = timer("game", "countdown");
+        complete.value_ms = 0;
+        complete.running = false;
+        complete.id = "finished".into();
+        state.timers.push(complete);
+        apply(
+            &mut state,
+            &TimerOperation::SubtractTime { seconds: 1800 },
+            1000,
+        )
+        .unwrap();
+        assert_eq!(state.game_time_ms, 1_800_000);
+        assert_eq!(state.timers[0].value_ms, 60_000);
+        assert_eq!(state.timers[1].value_ms, 60_000);
+        assert!(!state.timers[2].running);
+        apply(&mut state, &TimerOperation::SetTime { seconds: 0 }, 1000).unwrap();
+        assert_eq!(state.game_time_ms, 0);
+        assert_eq!(state.timers[0].value_ms, 60_000);
+        apply(
+            &mut state,
+            &TimerOperation::SetTime {
+                seconds: MAX_MS / 1000,
+            },
+            1000,
+        )
+        .unwrap();
+        assert_eq!(state.game_time_ms, MAX_MS);
+        for operation in [
+            TimerOperation::SetTime {
+                seconds: MAX_MS / 1000 + 1,
+            },
+            TimerOperation::SetTime { seconds: u64::MAX },
+            TimerOperation::SubtractTime { seconds: u64::MAX },
+            TimerOperation::SubtractTime { seconds: 0 },
+        ] {
+            assert!(apply(&mut state, &operation, 1000).is_err());
+            assert_eq!(state.game_time_ms, MAX_MS);
+        }
+        state.game_time_ms = 1000;
+        assert!(apply(
+            &mut state,
+            &TimerOperation::SubtractTime { seconds: 2 },
+            1000
+        )
+        .is_err());
+        assert_eq!(state.game_time_ms, 1000);
+    }
+    #[test]
+    fn corrected_clock_persists_and_logs_before_after_values_atomically() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("clock-edit-test-{}", Uuid::new_v4()));
+        let store = CampaignStore::new(path.clone()).unwrap();
+        let campaign = store.create_campaign("Clock correction").unwrap().value;
+        store
+            .change_game_tools(
+                &campaign.id,
+                ToolMutation {
+                    expected_revision: 0,
+                    operation: TimerOperation::SetTime { seconds: 3661 },
+                },
+            )
+            .unwrap();
+        assert!(store
+            .change_game_tools(
+                &campaign.id,
+                ToolMutation {
+                    expected_revision: 0,
+                    operation: TimerOperation::SetTime { seconds: 0 }
+                }
+            )
+            .is_err());
+        store
+            .change_game_tools(
+                &campaign.id,
+                ToolMutation {
+                    expected_revision: 1,
+                    operation: TimerOperation::SubtractTime { seconds: 61 },
+                },
+            )
+            .unwrap();
+        drop(store);
+        let store = CampaignStore::new(path.clone()).unwrap();
+        assert_eq!(
+            store
+                .load_game_tools(&campaign.id)
+                .unwrap()
+                .state
+                .game_time_ms,
+            3_600_000
+        );
+        let events = store.recent_events(&campaign.id).unwrap();
+        let event = events
+            .iter()
+            .find(|e| e.payload["operation"]["kind"] == "subtractTime")
+            .unwrap();
+        assert_eq!(event.payload["previousGameTimeMs"], 3_661_000);
+        assert_eq!(event.payload["gameTimeMs"], 3_600_000);
+        let conn = connect(&store.locate(&campaign.id).unwrap(), false).unwrap();
+        conn.execute_batch("CREATE TRIGGER fail_clock BEFORE INSERT ON events WHEN NEW.event_type='tools.changed' BEGIN SELECT RAISE(ABORT,'test failure'); END;").unwrap();
+        assert!(store
+            .change_game_tools(
+                &campaign.id,
+                ToolMutation {
+                    expected_revision: 2,
+                    operation: TimerOperation::SetTime { seconds: 0 }
+                }
+            )
+            .is_err());
+        assert_eq!(
+            store
+                .load_game_tools(&campaign.id)
+                .unwrap()
+                .state
+                .game_time_ms,
+            3_600_000
+        );
+        assert_eq!(store.load_game_tools(&campaign.id).unwrap().revision, 2);
+        drop(conn);
+        drop(store);
+        assert!(path.starts_with(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target")));
+        let _ = fs::remove_dir_all(path);
+    }
     #[test]
     fn reading_an_expired_timer_reports_complete_without_writing_events_or_state() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
