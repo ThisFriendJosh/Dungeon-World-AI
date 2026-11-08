@@ -1,4 +1,4 @@
 UpgradeCode	VersionMin	VersionMax	Language	Attributes	Remove	ActionProperty
 s38	S20	S20	S255	i4	S255	s72
 Upgrade	UpgradeCode	VersionMin	VersionMax	Language	Attributes
-{725F73BA-BD25-58E7-A6E3-667C88AC70A5}		0.2.0		512		OLDPRODUCTS
+{725F73BA-BD25-58E7-A6E3-667C88AC70A5}		0.2.1		512		OLDPRODUCTS

@@ -74,7 +74,7 @@ class SetupChoices(unittest.TestCase):
 class MsiTables(unittest.TestCase):
     def setUp(self):
         self.sdk = load("beta_msi_sdk", ROOT / "scripts/msi-sdk.py")
-        self.pack = {"productCode": "{00000000-0000-0000-0000-000000000001}",
+        self.pack = {"productCode": "{00000000-0000-0000-0000-000000000001}", "version": "0.2.1-beta.1",
                      "files": [{"path": "DungeonWorldAI.exe", "size": 3},
                                {"path": "app/ai/vcomp140.dll", "size": 4}]}
 
@@ -90,6 +90,8 @@ class MsiTables(unittest.TestCase):
         launch = next(r for r in tables["CustomAction"][3:] if r[0] == "LaunchAI")
         self.assertIn(launch[2], files)
         self.assertEqual(tables["Media"][-1][1], "2")
+        self.assertEqual(next(r[1] for r in tables["Property"][3:] if r[0] == "ProductVersion"), "0.2.1")
+        self.assertEqual(tables["Upgrade"][3][tables["Upgrade"][0].index("VersionMax")], "0.2.1")
 
     def test_unsafe_or_duplicate_file_names_are_rejected_before_packaging(self):
         self.pack["files"].append({"path": "../outside", "size": 0})

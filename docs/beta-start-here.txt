@@ -1,9 +1,14 @@
 Dungeon World AI - Beta
 Your world. Your table.
 
-1. Open Dungeon-World-AI-0.2.0-beta.1-Windows-Setup.msi and choose Install.
+1. Open Dungeon-World-AI-0.2.1-beta.1-Windows-Setup.msi and choose Install.
 2. Choose Finish to open local AI setup. Leave Local AI Dungeon Master selected.
 3. Choose Set up AI. When downloads finish, choose Finish to open the app.
+
+Upgrading from the earlier beta: save your work and close the app and its setup
+window before running this installer. Keep the defaults. Select AI image
+generation in local AI setup to retry the optional art installation. Existing
+campaigns and model downloads are kept; uninstalling first is unnecessary.
 
 An internet connection is needed for the initial AI downloads and for websites
 you choose to open in Scrying Pane. Your Dungeon Master and generated artwork

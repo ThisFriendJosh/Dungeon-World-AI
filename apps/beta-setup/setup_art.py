@@ -1,5 +1,6 @@
 """Explicit, GUI-owned optional setup. The art worker never downloads dependencies."""
 import importlib.metadata
+from collections import deque
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,15 @@ REVISION = "b261bac6fd2cf515557d5d0707481eafa0485ec2"
 PACKAGES = ["diffusers==0.42.1", "transformers==5.5.0", "accelerate==1.14.0",
             "Pillow==13.0.0", "safetensors==0.8.0", "huggingface_hub==1.33.0",
             "PyMuPDF==1.27.2.3"]
+
+
+class SetupError(RuntimeError):
+    pass
+
+
+def require_virtual_environment():
+    if sys.prefix == sys.base_prefix:
+        raise SetupError("The private AI art environment is not initialized. Install the updated beta and run Set up local AI again.")
 
 
 def progress(text):
@@ -37,30 +47,40 @@ def torch_channel():
 
 def pip(*arguments):
     # Only binary wheels: a beta tester never needs compilers or a build toolchain.
-    subprocess.run([sys.executable, "-I", "-m", "pip", "--isolated", "install",
-                    "--disable-pip-version-check", "--only-binary=:all:", "--retries", "3",
-                    "--timeout", "60", *arguments], check=True,
-                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    require_virtual_environment()
+    command = [sys.executable, "-I", "-X", "utf8", "-u", "-m", "pip", "--isolated", "--no-input", "install",
+               "--disable-pip-version-check", "--only-binary=:all:", "--retries", "3", "--timeout", "60", *arguments]
+    tail = deque(maxlen=30)
+    # Explicit pipes keep subprocess diagnostics available when the GUI has no console.
+    with subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as process:
+        for line in process.stdout:
+            print(line.rstrip(), flush=True)
+            tail.append(line.strip())
+        code = process.wait()
+    if code:
+        errors = [line for line in tail if line.startswith("ERROR:") or "externally-managed" in line]
+        reason = (errors[-1] if errors else next((line for line in reversed(tail) if line), "Package installer exited with code " + str(code)))
+        raise SetupError("AI art package setup failed: " + reason[:300] + " See the setup log for details.")
 
 
 def packages_ready():
-    try:
-        import torch
-        import torchvision
-        import diffusers
-        import transformers
-        import accelerate
-        import PIL
-        import safetensors
-        import huggingface_hub
-        import pymupdf
-        return (importlib.metadata.version("torch").split("+")[0] == "2.13.0"
-                and all(importlib.metadata.version(s.split("==")[0]) == s.split("==")[1] for s in PACKAGES))
-    except (ImportError, OSError, importlib.metadata.PackageNotFoundError):
-        return False
+    expected = {"torch": "2.13.0", "torchvision": "0.28.0", **dict(s.split("==") for s in PACKAGES)}
+    # A separate process releases Windows DLL locks before pip repairs any packages.
+    probe = ("import importlib.metadata as m,sys; "
+             "import torch,torchvision,diffusers,transformers,accelerate,PIL,safetensors,huggingface_hub,pymupdf; "
+             "expected=" + repr(expected) + "; "
+             "sys.exit(0 if all(m.version(k).split('+')[0]==v for k,v in expected.items()) else 1)")
+    result = subprocess.run([sys.executable, "-I", "-X", "utf8", "-c", probe],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            encoding="utf-8", errors="replace",
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return result.returncode == 0
 
 
 def main():
+    require_virtual_environment()
     destination = Path(sys.argv[1]).resolve()
     if not packages_ready():
         channel = torch_channel()
@@ -72,7 +92,8 @@ def main():
         # Fresh interpreter verifies newly installed native DLLs and package imports.
         subprocess.run([sys.executable, "-I", "-c",
                         "import torch, torchvision, diffusers, transformers, accelerate, PIL, safetensors, huggingface_hub, pymupdf; print('Image engine verified')"],
-                       check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                       stdout=sys.stdout, stderr=sys.stderr, check=True,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     from huggingface_hub import snapshot_download
     progress("Downloading SD-Turbo image weights (about 3 GB). Existing downloads are reused.")
     destination.mkdir(parents=True, exist_ok=True)
@@ -93,4 +114,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SetupError as error:
+        print("DWA_ERROR " + str(error), flush=True)
+        sys.exit(1)
