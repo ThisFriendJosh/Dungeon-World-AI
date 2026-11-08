@@ -20,12 +20,13 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Dungeon World AI Beta Setup")]
 [assembly: AssemblyProduct("Dungeon World AI Beta")]
-[assembly: AssemblyVersion("0.2.0.0")]
+[assembly: AssemblyVersion("0.2.1.0")]
 namespace DungeonWorldAI.Setup {
     public class Installed { public string product; public string version; public string directory; public string productCode; }
     static class Program {
         internal const string ProductId = "ai.dungeonworld.beta";
         internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 16000000 };
+        static readonly object LogLock = new object();
         internal static readonly string Self = Assembly.GetExecutingAssembly().Location;
         internal static readonly string Local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         internal static readonly string TestRoot = Environment.GetEnvironmentVariable("DWA_SETUP_TEST_ROOT");
@@ -34,7 +35,7 @@ namespace DungeonWorldAI.Setup {
         internal static string Data { get { return Testing ? Path.Combine(Root, "test-data") : Path.Combine(Local, "DungeonWorldAI"); } }
         internal static string StatePath { get { return Path.Combine(Root, "installed.json"); } }
         internal static string Model { get { return Path.Combine(Data, "models", "dm", "Qwen3-4B-Q4_K_M.gguf"); } }
-        internal static string Python { get { return Path.Combine(Data, "runtimes", "art-python", "python.exe"); } }
+        internal static string Python { get { return Path.Combine(Data, "runtimes", "art-env", "Scripts", "python.exe"); } }
         internal static string Log { get { return Path.Combine(Data, "Beta", "setup.log"); } }
         [STAThread] static int Main(string[] args) {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
@@ -51,7 +52,7 @@ namespace DungeonWorldAI.Setup {
                 Application.Run(new SetupForm(configure)); return 0;
             } catch (Exception e) { WriteLog(e.ToString()); if (args.Any(a => a == "/self-test")) { Console.Error.WriteLine(e.ToString()); return 1; } MessageBox.Show(e.Message + "\n\nYour saved campaigns have not been removed.", "Dungeon World AI", MessageBoxButtons.OK, MessageBoxIcon.Information); return 1; }
         }
-        internal static void WriteLog(string s) { try { Directory.CreateDirectory(Path.GetDirectoryName(Log)); File.AppendAllText(Log, DateTime.UtcNow.ToString("u") + " " + s + Environment.NewLine); } catch { } }
+        internal static void WriteLog(string s) { lock (LogLock) { try { Directory.CreateDirectory(Path.GetDirectoryName(Log)); File.AppendAllText(Log, DateTime.UtcNow.ToString("u") + " " + s + Environment.NewLine, new UTF8Encoding(false)); } catch { } } }
         internal static string Hash(Stream s) { using (var h = SHA256.Create()) return BitConverter.ToString(h.ComputeHash(s)).Replace("-", "").ToLowerInvariant(); }
         internal static string HashFile(string path) { using (var f = File.OpenRead(path)) return Hash(f); }
         internal static string Child(string parent, string path) {
@@ -150,20 +151,27 @@ namespace DungeonWorldAI.Setup {
             progress(100, "Local Dungeon Master ready.");
         }
         internal static async Task Art(Action<int, string> progress, CancellationToken token) {
-            string source = Path.Combine(AppFolder(), "python"), destination = Path.GetDirectoryName(Python);
-            if (!File.Exists(Python)) {
-                progress(0, "Preparing the private image engine..."); Directory.CreateDirectory(destination);
-                foreach (string f in Directory.GetFiles(source, "*", SearchOption.AllDirectories)) { token.ThrowIfCancellationRequested(); string target = Child(destination, f.Substring(source.Length + 1)); Directory.CreateDirectory(Path.GetDirectoryName(target)); File.Copy(f, target, true); }
-            }
-            var start = new ProcessStartInfo(Python, "-I -u \"" + Path.Combine(AppFolder(), "setup", "setup_art.py") + "\" \"" + Path.Combine(Data, "models", "sd-turbo") + "\"") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            string basePython = Path.Combine(AppFolder(), "python", "python.exe");
+            string environment = Path.Combine(Data, "runtimes", "art-env");
+            progress(0, "Preparing a separate AI art environment...");
+            // venv preserves the base distribution's managed marker. Re-running repairs an
+            // interrupted bootstrap without clearing already installed art packages.
+            await RunPython(basePython, "-I -X utf8 -m venv --without-pip \"" + environment + "\"", progress, token);
+            progress(0, "Preparing the private image package manager...");
+            await RunPython(Python, "-I -X utf8 -m ensurepip --upgrade --default-pip", progress, token);
+            await RunPython(Python, "-I -X utf8 -u \"" + Path.Combine(AppFolder(), "setup", "setup_art.py") + "\" \"" + Path.Combine(Data, "models", "sd-turbo") + "\"", progress, token);
+            progress(100, "Local AI art ready.");
+        }
+        internal static async Task RunPython(string executable, string arguments, Action<int, string> progress, CancellationToken token) {
+            var start = new ProcessStartInfo(executable, arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
             start.EnvironmentVariables.Remove("HF_HUB_OFFLINE"); start.EnvironmentVariables.Remove("TRANSFORMERS_OFFLINE");
+            string failure = null;
             using (var p = Process.Start(start)) using (var tree = new ProcessTree(p)) using (token.Register(() => tree.Stop())) {
                 var errors = Task.Run(() => { string line; while ((line = p.StandardError.ReadLine()) != null) WriteLog(line); });
-                string s; while ((s = await p.StandardOutput.ReadLineAsync()) != null) { WriteLog(s); if (s.StartsWith("DWA_PROGRESS ")) progress(0, s.Substring(13)); }
+                string s; while ((s = await p.StandardOutput.ReadLineAsync()) != null) { WriteLog(s); if (s.StartsWith("DWA_PROGRESS ")) progress(0, s.Substring(13)); else if (s.StartsWith("DWA_ERROR ")) failure = s.Substring(10); }
                 await Task.Run(() => p.WaitForExit()); await errors; token.ThrowIfCancellationRequested();
-                if (p.ExitCode != 0) throw new Exception("AI art setup could not finish. Check your internet connection, then choose Retry. The app and uploaded artwork still work. Details are in the setup log.");
+                if (p.ExitCode != 0) throw new Exception(failure ?? "AI art setup could not finish. View the setup log for the failing step, then choose Retry. Saved campaigns and uploaded artwork are still available.");
             }
-            progress(100, "Local AI art ready.");
         }
         internal static void DeleteOwnedTree(string target, string parent) {
             string full = Path.GetFullPath(target), prefix = Path.GetFullPath(parent).TrimEnd('\\') + "\\";
@@ -184,6 +192,11 @@ namespace DungeonWorldAI.Setup {
                 string file = Path.Combine(temp, "state.json"); AtomicJson(file, new { first = 1 }); AtomicJson(file, new { second = 2 }); if (!File.ReadAllText(file).Contains("second")) return 4;
                 string bytes = Path.Combine(temp, "bytes"); File.WriteAllText(bytes, "abc", new UTF8Encoding(false)); if (HashFile(bytes) != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") return 5;
                 bool outside = false; try { DeleteOwnedTree(temp, Path.Combine(temp, "nested")); } catch { outside = true; } if (!outside) return 6;
+                if (Testing) {
+                    string marker = "concurrent-log-check-" + Guid.NewGuid().ToString("N");
+                    Task.WaitAll(Enumerable.Range(0, 40).Select(i => Task.Run(() => WriteLog(marker + "-" + i))).ToArray());
+                    if (File.ReadAllLines(Log).Count(line => line.Contains(marker)) != 40) return 7;
+                }
                 return 0;
             } finally { DeleteOwnedTree(temp, testParent); }
         }

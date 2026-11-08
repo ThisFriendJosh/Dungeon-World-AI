@@ -53,6 +53,10 @@ def prepare_tables(pack):
     for row in tables["Property"][3:]:
         if row[0] == "ProductCode":
             row[1] = pack["productCode"]
+        elif row[0] == "ProductVersion":
+            row[1] = pack["version"].split("-")[0]
+    for row in tables["Upgrade"][3:]:
+        row[tables["Upgrade"][0].index("VersionMax")] = pack["version"].split("-")[0]
     for row in tables["CustomAction"][3:]:
         if row[0] == "LaunchAI":
             row[2] = helper

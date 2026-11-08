@@ -13,7 +13,7 @@ import sys
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.2.0-beta.1"
+VERSION = "0.2.1-beta.1"
 PRODUCT = "ai.dungeonworld.beta"
 
 
@@ -57,7 +57,7 @@ def source_files(app, llama, python, crt):
                 tail = relative.parts[relative.parts.index("site-packages") + 1:]
                 if not tail or not (tail[0] == "pip" or tail[0].startswith("pip-") and tail[0].endswith(".dist-info")):
                     continue
-            if folder == "Lib" and relative.parts[1] in ("test", "idlelib", "tkinter", "turtledemo", "ensurepip"):
+            if folder == "Lib" and relative.parts[1] in ("test", "idlelib", "tkinter", "turtledemo"):
                 continue
             files["python/" + relative.as_posix()] = f
     for f in crt.glob("*.dll"):
@@ -70,6 +70,8 @@ def source_files(app, llama, python, crt):
     files["ai/vcomp140.dll"] = openmp
     if "python/python.exe" not in files or not any(p.startswith("python/Lib/pip") or p.startswith("python/Lib/site-packages/pip/") for p in files):
         raise ValueError("The private Python runtime needs its bundled pip module")
+    if "python/Lib/ensurepip/__init__.py" not in files or not any(p.startswith("python/Lib/ensurepip/_bundled/pip-") and p.endswith(".whl") for p in files):
+        raise ValueError("The Python distribution needs ensurepip and its offline pip wheel to create the private virtual environment")
     files["setup/setup_art.py"] = ROOT / "apps/beta-setup/setup_art.py"
     files["LICENSE.txt"] = ROOT / "LICENSE"
     files["Beta-start-here.txt"] = ROOT / "docs/beta-start-here.txt"
