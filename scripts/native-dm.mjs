@@ -7,11 +7,10 @@ import {spawn} from "node:child_process";
 const root=join(dirname(fileURLToPath(import.meta.url)),"..");
 const env={...process.env};
 const settingsFile=join(root,"build","native","launch-settings.json");
-if(!env.DWA_DATA_DIR&&existsSync(settingsFile)){
-  const settings=JSON.parse(readFileSync(settingsFile,"utf8"));
-  if(typeof settings.dataDir==="string"&&settings.dataDir.trim())env.DWA_DATA_DIR=settings.dataDir;
-}
-const executable=env.DWA_NATIVE_APP_PATH||join(root,"build","native","dungeon-world-ai-desktop.exe");
+const settings=existsSync(settingsFile)?JSON.parse(readFileSync(settingsFile,"utf8")):{};
+if(!env.DWA_DATA_DIR&&typeof settings.dataDir==="string"&&settings.dataDir.trim())env.DWA_DATA_DIR=settings.dataDir;
+const appFile=typeof settings.appFile==="string"&&/^dungeon-world-ai-desktop(?:-\d+)?\.exe$/.test(settings.appFile)?settings.appFile:"dungeon-world-ai-desktop.exe";
+const executable=env.DWA_NATIVE_APP_PATH||join(root,"build","native",appFile);
 if(!existsSync(executable))throw Error("Build the native app first: npm run build:native");
 if(!env.LOCAL_LLM_SERVER_PATH){
   const runtime=join(homedir(),".unsloth","llama.cpp","build","bin","Release","llama-server.exe");
