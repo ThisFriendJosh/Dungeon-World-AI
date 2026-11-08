@@ -12,6 +12,8 @@
     "dev:dm": "node scripts/dm-dev.mjs",
     "build": "node scripts/desktop.mjs build",
     "build:ui": "npm run build --workspace @dwa/vtt-ui",
+    "build:native": "node scripts/build-native.mjs",
+    "start:native": "node scripts/native-dm.mjs",
     "check": "npm run typecheck --workspace @dwa/vtt-ui && npm run policy:offline",
     "test:engine": "cargo test --manifest-path services/engine/Cargo.toml",
     "test:ai": "cargo test --manifest-path services/ai/Cargo.toml",

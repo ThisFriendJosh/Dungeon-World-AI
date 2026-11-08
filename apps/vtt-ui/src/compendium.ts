@@ -10,6 +10,7 @@ const kinds=["backgrounds","classes","items","monsters","species","spells"];
 const editionLabel=(value:string)=>value==="5e-2024"?"2024 / 2025 source title":value==="5e-2014"?"2014 source title":"Year not specified";
 const format=(value:unknown)=>typeof value==="string"?value:JSON.stringify(value,null,2);
 export class Compendium {
+ invalidate(){this.ready=false;}
  private campaignId="";private packs:Pack[]=[];private books:string[]=[];private results:Results={total:0,entries:[]};
  private detail:Detail|null=null;private ready=false;private pending=false;
  private query={search:"",kind:"",edition:"",book:"",offset:0};
@@ -27,7 +28,7 @@ export class Compendium {
   this.packs=packs;this.books=books;this.results=results;this.ready=true;
  }
  html():string{
-  return `<section class="compendium"><header><p class="eyebrow">Your local collection</p><h2>Compendium</h2><p class="subtle">Find spells, creatures, equipment, character options, and their original sources.</p></header>
+  return `<section class="compendium"><header><p class="eyebrow">Your local collection</p><h2>Reference entries</h2><p class="subtle">Find spells, creatures, equipment, character options, and their original sources. Add books, adventures and other file types in Campaign documents & DM library.</p></header>
    <details class="compendium-import" ${!this.packs.length?"open":""}><summary>Import dnd-data JSON collections</summary>
     <p>Extract the supplied dnd-data archive, then choose one or more files from its <strong>data</strong> folder. Accepted files: backgrounds.json, classes.json, items.json, monsters.json, species.json, and spells.json.</p>
     <fieldset><label>Local JSON files<input id="contentFiles" type="file" accept=".json,application/json" multiple></label></fieldset>

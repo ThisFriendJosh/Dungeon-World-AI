@@ -26,6 +26,9 @@ import {HistoryPanel} from "./history-panel";
 import {AssetWorkshop} from "./asset-workshop";
 import type {GeneratedAsset} from "./asset-workshop";
 import "./workspace-tools.css";
+import {installClipboard} from "./clipboard";
+import {compendiumWorkspace} from "./compendium-workspace";
+import type {CompendiumSection} from "./compendium-workspace";
 const knowledge=new KnowledgePanel();
 const historyPanel=new HistoryPanel();
 const assetWorkshop=new AssetWorkshop();
@@ -50,7 +53,8 @@ const state = {
   selectedId: null as string | null,
   busy: false,
   dirty: false,
-  view: "character" as "character" | "tabletop" | "dice" | "art" | "rules" | "compendium" | "dm" | "library",
+  view: "character" as "character" | "tabletop" | "dice" | "art" | "rules" | "compendium" | "dm",
+  compendiumSection:"documents" as CompendiumSection,
   message: "",
   messageKind: "info"
 };
@@ -196,8 +200,8 @@ function render() {
         ${state.campaign ? `
           <div class="campaign-heading"><p class="eyebrow">Campaign workspace · ${escape(rules.label())}</p><h2>${escape(state.campaign.name)}</h2>
             <p class="subtle">${state.characters.length} character${state.characters.length === 1 ? "" : "s"} · Campaign and character changes are saved locally.</p></div>
-          <div class="workspace-tabs" aria-label="Campaign views"><button data-workspace-view="dm" aria-pressed="${state.view === "dm"}">Dungeon Master</button><button data-workspace-view="character" aria-pressed="${state.view === "character"}">Characters</button><button data-workspace-view="tabletop" aria-pressed="${state.view === "tabletop"}">Tabletop</button><button data-workspace-view="dice" aria-pressed="${state.view === "dice"}">Dice</button><button data-workspace-view="art" aria-pressed="${state.view === "art"}">Art & codex</button><button data-workspace-view="rules" aria-pressed="${state.view === "rules"}">Rules</button><button data-workspace-view="compendium" aria-pressed="${state.view === "compendium"}">Compendium</button><button data-workspace-view="library" aria-pressed="${state.view === "library"}">DM library</button></div>
-          ${state.view === "library" ? knowledge.html() : state.view === "dm" ? dm.html(state.characters) : state.view === "tabletop" ? tabletop.html(state.characters,dice.html(state.characters)) : state.view === "dice" ? dice.html(state.characters) : state.view === "art" ? assetWorkshop.html()+artLibrary.html() : state.view === "rules" ? rules.html() : state.view === "compendium" ? compendium.html() : `
+          <div class="workspace-tabs" aria-label="Campaign views"><button data-workspace-view="dm" aria-pressed="${state.view === "dm"}">Dungeon Master</button><button data-workspace-view="character" aria-pressed="${state.view === "character"}">Characters</button><button data-workspace-view="tabletop" aria-pressed="${state.view === "tabletop"}">Tabletop</button><button data-workspace-view="dice" aria-pressed="${state.view === "dice"}">Dice</button><button data-workspace-view="art" aria-pressed="${state.view === "art"}">Art & codex</button><button data-workspace-view="rules" aria-pressed="${state.view === "rules"}">Rules</button><button data-workspace-view="compendium" aria-pressed="${state.view === "compendium"}">Compendium</button></div>
+          ${state.view === "dm" ? dm.html(state.characters) : state.view === "tabletop" ? tabletop.html(state.characters,dice.html(state.characters)) : state.view === "dice" ? dice.html(state.characters) : state.view === "art" ? assetWorkshop.html()+artLibrary.html() : state.view === "rules" ? rules.html() : state.view === "compendium" ? compendiumWorkspace(state.compendiumSection,knowledge.html(),compendium.html()) : `
           <div class="party-tabs" aria-label="Characters">${state.characters.map(c => `
             <button class="${c.id === state.selectedId ? "active" : ""}" data-character="${escape(c.id)}" aria-pressed="${c.id === state.selectedId}">${escape(c.name)}<span>Level ${c.level} ${escape(c.className)}</span></button>`).join("")}</div>
           <section class="sheet-panel">${character ? sheet(character) : '<div class="empty-state"><p class="eyebrow">The party begins here</p><h2>Add your first character</h2><p>Create a character below, then fill in their sheet.</p></div>'}</section>
@@ -217,10 +221,13 @@ function render() {
     state.view = button.dataset.workspaceView as typeof state.view;
     render();
   }));
+  root.querySelectorAll<HTMLButtonElement>("[data-compendium-section]").forEach(button=>button.addEventListener("click",()=>{
+    if(state.busy)return;state.compendiumSection=button.dataset.compendiumSection as CompendiumSection;render();
+  }));
   if(state.campaign){const campaign=state.campaign;historyPanel.bind(root,{campaignId:campaign.id,expectedSeq:state.latestEventSeq,render,action,
     isBusy:()=>{if(state.busy||dm.pending)return true;if(state.dirty||tabletop.dirty||rules.dirty||knowledge.dirty){status("Save or discard current edits before editing history.","warning");return true;}return false;},
     onSaved:(warning,message)=>afterSave(campaign,message,warning),onError:message=>status(message,"error")});}
-  if(state.campaign&&state.view==="library"){const campaign=state.campaign;knowledge.bind(root,{campaignId:campaign.id,render,action,onDirty:()=>status("Unsaved source text.","warning"),onMessage:message=>status(message),onSaved:warning=>afterSave(campaign,"Campaign source saved and indexed for the Dungeon Master.",warning)});}
+  if(state.campaign&&state.view==="compendium"&&state.compendiumSection==="documents"){const campaign=state.campaign;knowledge.bind(root,{campaignId:campaign.id,render,action,onDirty:()=>status("Unsaved source text.","warning"),onMessage:message=>status(message),onSaved:warning=>{compendium.invalidate();return afterSave(campaign,"Sources saved in Compendium and indexed for the Dungeon Master.",warning);}});}
   if (state.campaign && state.view === "dm") {
     const campaign = state.campaign;
     dm.bind(root, {campaignId:campaign.id,render,onSaved:warning=>afterSave(campaign,"Dungeon Master turn saved.",warning)});
@@ -239,9 +246,9 @@ function render() {
       onSaved: (roll, warning) => afterSave(campaign, "Roll saved: " + describeRoll(roll), warning,true) });
   }
 
-  if(state.campaign&&state.view==="compendium"){
+  if(state.campaign&&state.view==="compendium"&&state.compendiumSection==="entries"){
     const campaign=state.campaign;
-    compendium.bind(root,{campaignId:campaign.id,action,render,isActive:()=>state.view==="compendium"&&state.campaign?.id===campaign.id,onError:message=>status(message,"error"),onMessage:message=>status(message),onSaved:warning=>afterSave(campaign,"Reference collections imported.",warning)});
+    compendium.bind(root,{campaignId:campaign.id,action,render,isActive:()=>state.view==="compendium"&&state.compendiumSection==="entries"&&state.campaign?.id===campaign.id,onError:message=>status(message,"error"),onMessage:message=>status(message),onSaved:warning=>afterSave(campaign,"Reference collections imported.",warning)});
   }
   if(state.campaign&&state.view==="rules"){
     const campaign=state.campaign;
@@ -345,6 +352,7 @@ function eventLabel(event: CampaignEvent): string {
 window.addEventListener("beforeunload", event => {
   if (state.dirty || tabletop.dirty || rules.dirty || knowledge.dirty || dm.pending || dm.hasDraft) { event.preventDefault(); event.returnValue = ""; }
 });
+installClipboard(root,message=>status(message,"warning"));
 render();
 if (isTauri()) {
   void action(async () => { state.campaigns = await invoke<CampaignSummary[]>("list_campaigns"); render(); });

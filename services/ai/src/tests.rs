@@ -179,3 +179,13 @@ fn missing_runtime_never_calls_commit_and_cancellation_has_no_global_process_eff
     assert!(dm.cancel().unwrap());
     assert!(dm.check_cancelled().is_err());
 }
+#[test]
+fn access_denied_is_fatal_at_startup_instead_of_a_false_model_load_timeout() {
+    let error=local_connection_error(std::io::Error::from_raw_os_error(10013));
+    assert!(error.contains("10013"));
+    assert!(error.contains("blocked"));
+    assert!(startup_error_is_fatal(&error));
+    assert!(startup_error_is_fatal("The local DM rejected the request (HTTP 401)."));
+    assert!(!startup_error_is_fatal(&local_connection_error(std::io::Error::from(std::io::ErrorKind::ConnectionRefused))));
+    assert!(!startup_error_is_fatal("The local DM rejected the request (HTTP 503)."));
+}

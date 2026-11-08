@@ -583,3 +583,4 @@ fn validate_update(update: &CharacterUpdate) -> Result<(), EngineError> {
 
 #[cfg(test)]
 mod tests;
+pub mod documents;
