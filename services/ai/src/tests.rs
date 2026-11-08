@@ -332,8 +332,8 @@ fn read_rounds_stay_bounded_even_when_a_runtime_returns_mixed_or_excessive_reque
                         completions.set(completions.get() + 1);
                         if completions.get() == 4 {
                             assert_eq!(
-                                body["response_format"]["schema"]["properties"]["requests"]
-                                    ["maxItems"],
+                                body["response_format"]["json_schema"]["schema"]["properties"]
+                                    ["requests"]["maxItems"],
                                 0
                             );
                         }
@@ -420,4 +420,89 @@ fn saved_conversation_roles_keep_the_latest_action_separate_from_the_opening_sce
     let current: Value = serde_json::from_str(trimmed[1]["content"].as_str().unwrap()).unwrap();
     assert_eq!(current["earlierTurnsOmitted"], true);
     assert_eq!(current["stateRevision"], 9);
+}
+#[test]
+fn completion_schema_uses_the_nested_contract_read_by_the_installed_llama_runtime() {
+    let context = DmContext {
+        campaign_id: "test".into(),
+        state_seq: 1,
+        state: json!({}),
+        history: vec![],
+        total_turns: 0,
+    };
+    let proposal=controller_dm().generate_with_io(&context,"I follow him into the city.",&|_|panic!("this reply needs no lookup"),|route,body|Ok(match route{
+        "/apply-template"=>json!({"prompt":"test"}),
+        "/tokenize"=>json!({"tokens":[1]}),
+        "/v1/chat/completions"=>{
+            let format=&body["response_format"];
+            assert_eq!(format["type"],"json_schema");
+            // server-common.cpp reads json_schema.schema for this response type.
+            // A sibling `schema` is ignored and silently becomes generic JSON.
+            let wrapper=&format["json_schema"];
+            assert_eq!(wrapper["name"],"dungeon_master_turn");assert_eq!(wrapper["strict"],true);
+            let schema=wrapper["schema"].as_object().expect("the runtime must receive an actual schema");
+            assert_eq!(schema["oneOf"].as_array().unwrap().len(),2);
+            assert!(format.get("schema").is_none());
+            completion(json!({"schemaVersion":1,"narration":"The guard leads you through the city gate and pauses at a street corner.","choices":[],"requests":[]}),"stop")
+        },_=>panic!("unexpected route")
+    })).unwrap();
+    assert!(proposal.narration.contains("through the city gate"));
+}
+
+#[test]
+fn malformed_reply_keeps_a_local_diagnostic_without_logging_context_headers_or_reasoning() {
+    struct Data(PathBuf);
+    impl Drop for Data {
+        fn drop(&mut self) {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+            if self.0.starts_with(root)
+                && self
+                    .0
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("reply-diagnostic-"))
+            {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+    }
+    let data = Data(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("reply-diagnostic-{}", Uuid::new_v4())),
+    );
+    let dm = LocalDm::new(RuntimeConfig {
+        log_dir: data.0.clone(),
+        ..controller_dm().config.clone()
+    });
+    let context = DmContext {
+        campaign_id: "test".into(),
+        state_seq: 1,
+        state: json!({"privateContext":"CONTEXT_CANARY"}),
+        history: vec![],
+        total_turns: 0,
+    };
+    let error=dm.generate_with_io(&context,"I follow him into the city.",&|_|panic!("invalid output cannot execute a lookup"),|route,_|Ok(match route{
+        "/apply-template"=>json!({"prompt":"test"}),"/tokenize"=>json!({"tokens":[1]}),
+        "/v1/chat/completions"=>json!({"authorization":"AUTH_CANARY","choices":[{"finish_reason":"stop","message":{"content":"{\"schemaVersion\":1,\"narration\":42,\"choices\":[]}","reasoning_content":"REASONING_CANARY"}}]}),_=>panic!("unexpected route")
+    })).unwrap_err();
+    assert!(error.contains("No turn was saved"));
+    assert!(error.contains("dm-response-error.json"));
+    let encoded = std::fs::read_to_string(data.0.join("dm-response-error.json")).unwrap();
+    let report: Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(report["promptVersion"], PROMPT_VERSION);
+    assert_eq!(report["decodeError"]["category"], "Data");
+    for marker in ["CONTEXT_CANARY", "AUTH_CANARY", "REASONING_CANARY"] {
+        assert!(!encoded.contains(marker));
+        assert!(!error.contains(marker));
+    }
+    let file = data.0.join("not-a-folder");
+    std::fs::write(&file, "test").unwrap();
+    let blocked = LocalDm::new(RuntimeConfig {
+        log_dir: file,
+        ..controller_dm().config.clone()
+    });
+    assert_eq!(
+        blocked.record_invalid_reply(&json!({}), "original failure"),
+        "original failure"
+    );
 }

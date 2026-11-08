@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub const PROMPT_VERSION: &str = "dm-narrator-v0.4-tools";
+pub const PROMPT_VERSION: &str = "dm-narrator-v0.5-tools";
 const CONTEXT_TOKENS: usize = 8192;
 const OUTPUT_TOKENS: usize = 1024;
 const RESPONSE_LIMIT: u64 = 1_000_000;
@@ -476,11 +476,15 @@ impl LocalDm {
                     "model":"dungeon-master","messages":messages,"stream":false,
                     "temperature":0.7,"top_p":0.8,"max_tokens":OUTPUT_TOKENS,
                     "chat_template_kwargs":{"enable_thinking":false},"reasoning_effort":"none",
-                    "response_format":{"type":"json_schema","schema":proposal_schema(round < 3)}
+                    "response_format":{"type":"json_schema","json_schema":{
+                        "name":"dungeon_master_turn","strict":true,"schema":proposal_schema(round < 3)
+                    }}
                 }),
             );
             self.check_cancelled()?;
-            let reply = decode_completion(response?)?;
+            let response = response?;
+            let reply = decode_completion(response.clone())
+                .map_err(|error| self.record_invalid_reply(&response, &error))?;
             if reply.requests.is_empty() {
                 return reply.proposal();
             }
@@ -502,6 +506,29 @@ impl LocalDm {
             }
         }
         Err("The DM did not finish its reply.".into())
+    }
+
+    /// Keep failed output and decode metadata locally. Do not log the request
+    /// context, HTTP headers, or the separate reasoning_content field.
+    fn record_invalid_reply(&self, response: &Value, error: &str) -> String {
+        let path = self.config.log_dir.join("dm-response-error.json");
+        let choice = &response["choices"][0];
+        let detail=choice["message"]["content"].as_str().and_then(|content|serde_json::from_str::<ModelReply>(content).err()).map(|error|{
+            json!({"category":format!("{:?}",error.classify()),"line":error.line(),"column":error.column(),"message":error.to_string()})
+        });
+        let report = json!({"promptVersion":PROMPT_VERSION,"model":self.config.model_name(),"error":error,
+            "finishReason":choice["finish_reason"],"content":choice["message"]["content"],"decodeError":detail});
+        let saved = fs::create_dir_all(&self.config.log_dir).and_then(|_| {
+            fs::write(
+                &path,
+                serde_json::to_vec_pretty(&report).unwrap_or_default(),
+            )
+        });
+        if saved.is_ok() {
+            format!("{error} Response diagnostic: {}", path.display())
+        } else {
+            error.to_owned()
+        }
     }
 }
 
