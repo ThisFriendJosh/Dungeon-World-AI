@@ -102,5 +102,42 @@ class MsiTables(unittest.TestCase):
             self.sdk.prepare_tables(self.pack)
 
 
+class CurrentRelease(unittest.TestCase):
+    def setUp(self):
+        self.builder = load("beta_release_builder", ROOT / "scripts/build-beta.py")
+        self.temp_parent = ROOT / "build/beta-release-tests"
+        self.temp_parent.mkdir(parents=True, exist_ok=True)
+
+    def test_distribution_copies_replace_stale_bytes_and_record_their_version(self):
+        with tempfile.TemporaryDirectory(prefix="dwa-release-", dir=self.temp_parent) as directory:
+            folder = Path(directory)
+            source = folder / "versioned.msi"
+            source.write_bytes(b"current fixture installer")
+            alias = folder / "shared" / "setup.msi"
+            alias.parent.mkdir()
+            alias.write_bytes(b"older fixture")
+            paths = self.builder.publish_installer(source, "test-version", [alias, alias])
+            self.assertEqual(paths, [alias])
+            self.assertEqual(alias.read_bytes(), source.read_bytes())
+            metadata = json.loads(alias.with_name(alias.name + ".version.json").read_text())
+            self.assertEqual(metadata["version"], "test-version")
+            self.assertEqual(metadata["sha256"], self.builder.digest(alias))
+            self.assertEqual(list(alias.parent.glob("*.tmp")), [])
+
+    def test_a_wrong_version_or_checksum_cannot_replace_the_current_alias(self):
+        with tempfile.TemporaryDirectory(prefix="dwa-release-", dir=self.temp_parent) as directory:
+            folder = Path(directory)
+            self.builder.ROOT = folder
+            source = folder / ("Dungeon-World-AI-" + self.builder.VERSION + "-Windows-Setup.msi")
+            source.write_bytes(b"fixture")
+            (folder / "package-manifest.json").write_text(json.dumps({"version": self.builder.VERSION}))
+            source.with_name(source.name + ".sha256").write_text("incorrect  " + source.name)
+            with self.assertRaises(ValueError):
+                self.builder.publish_current_release(source)
+            self.assertFalse((folder / "build/beta-release/DungeonWorldAI-Beta-Setup.msi").exists())
+            with self.assertRaises(ValueError):
+                self.builder.publish_current_release(folder / "older-version.msi")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

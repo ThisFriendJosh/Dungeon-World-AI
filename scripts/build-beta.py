@@ -22,6 +22,52 @@ def digest(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def publish_installer(installer, version, destinations):
+    """Refresh named distribution copies atomically; never publish partial bytes."""
+    installer = Path(installer).resolve()
+    expected = digest(installer)
+    metadata = {"version": version, "sha256": expected, "bytes": installer.stat().st_size}
+    published = []
+    for destination in dict.fromkeys(str(Path(p).resolve()) for p in destinations):
+        destination = Path(destination)
+        if destination.suffix.lower() != ".msi":
+            raise ValueError("A beta distribution destination must be an .msi file")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".tmp")
+        try:
+            if destination != installer:
+                shutil.copyfile(installer, temporary)
+                if digest(temporary) != expected:
+                    raise ValueError("The copied beta installer did not match its checksum")
+                os.replace(temporary, destination)
+            destination.with_name(destination.name + ".sha256").write_text(expected + "  " + destination.name + "\n", encoding="ascii")
+            destination.with_name(destination.name + ".version.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+            published.append(destination)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+    return published
+
+
+def publish_current_release(installer):
+    installer = Path(installer).resolve()
+    if installer.name != "Dungeon-World-AI-" + VERSION + "-Windows-Setup.msi":
+        raise ValueError("Stage the versioned installer for the current release")
+    manifest = json.loads((installer.parent / "package-manifest.json").read_text(encoding="utf-8"))
+    checksum = installer.with_name(installer.name + ".sha256").read_text(encoding="ascii").split()[0]
+    if manifest.get("version") != VERSION or digest(installer) != checksum:
+        raise ValueError("The installer, version manifest, and checksum do not describe the same current release")
+    destinations = [ROOT / "build/beta-release/DungeonWorldAI-Beta-Setup.msi"]
+    local_settings = ROOT / "build/beta-publish-settings.json"
+    if local_settings.is_file():
+        settings = json.loads(local_settings.read_text(encoding="utf-8-sig"))
+        if settings.get("schemaVersion") != 1 or not isinstance(settings.get("destinations"), list) or any(not isinstance(p, str) or not Path(p).is_absolute() for p in settings["destinations"]):
+            raise ValueError("Beta publish settings need schemaVersion 1 and absolute destination filenames")
+        destinations.extend(Path(p) for p in settings["destinations"])
+    for path in publish_installer(installer, VERSION, destinations):
+        print("Current beta installer: " + str(path), flush=True)
+
+
 def source_files(app, llama, python, crt):
     """Deliberate allowlist. Never traverse the project or user profile as a payload."""
     files = {"dungeon-world-ai-desktop.exe": app}
@@ -81,13 +127,19 @@ def source_files(app, llama, python, crt):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--app", required=True, type=Path)
-    parser.add_argument("--llama", required=True, type=Path)
+    parser.add_argument("--stage-existing", type=Path, help="Refresh distribution copies of an already verified current installer without rebuilding")
+    parser.add_argument("--app", type=Path)
+    parser.add_argument("--llama", type=Path)
     parser.add_argument("--python", default=Path(sys.base_prefix), type=Path)
-    parser.add_argument("--crt", required=True, type=Path)
-    parser.add_argument("--llama-source", required=True, type=Path)
+    parser.add_argument("--crt", type=Path)
+    parser.add_argument("--llama-source", type=Path)
     parser.add_argument("--output", default=ROOT / "build/beta", type=Path)
     args = parser.parse_args()
+    if args.stage_existing:
+        publish_current_release(args.stage_existing)
+        return
+    if not all((args.app, args.llama, args.crt, args.llama_source)):
+        parser.error("A build needs --app, --llama, --crt and --llama-source")
     if os.name != "nt":
         raise SystemExit("Build this Windows installer on Windows.")
     output = args.output.resolve()
@@ -135,6 +187,7 @@ def main():
     (output / (setup.name + ".sha256")).write_text(digest(setup) + "  " + setup.name + "\n", encoding="ascii")
     public_manifest = dict(pack, files=[{k:v for k,v in f.items() if k != "source"} for f in manifest_files])
     (output / "package-manifest.json").write_text(json.dumps(public_manifest, indent=2), encoding="utf-8")
+    publish_current_release(setup)
     print("Verified installer: %s (%.1f MB)" % (setup, setup.stat().st_size / 1048576), flush=True)
 
 
