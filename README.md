@@ -2,6 +2,12 @@
 
 An offline-first desktop virtual tabletop for solo play.
 
+## Windows beta installer
+
+Open **Dungeon-World-AI-0.2.0-beta.1-Windows-Setup.msi**, choose **Install**, then **Finish** to open guided local AI setup. Desktop and Start menu shortcuts open the app. No developer tools or API keys are needed. The app and Scrying Pane are bundled; the Dungeon Master model and optional AI art download once during setup. Campaigns and models stay on disk when the app is uninstalled.
+
+See the [short beta guide](docs/beta-start-here.txt) and [installer build and verification notes](docs/beta-installer.md). This is an unsigned beta; the normal Windows install and initial downloads need a clean-PC test before wider distribution.
+
 ## Current milestone: local AI Dungeon Master integration
 
 - Open the Dungeon Master tab, choose a character, and send a player action to a local GGUF model.
@@ -11,7 +17,7 @@ An offline-first desktop virtual tabletop for solo play.
 - Search local campaign/source packs and compendium descriptions; give the DM read-only table/character inspection and engine arithmetic.
 - Create and save procedural PNG/SVG tokens, and clean up individual history entries with confirmation and Restore.
 
-The AI integration is a development build. See [AI Dungeon Master setup and verification](docs/ai-dungeon-master.md) for the launcher, current limits, and outstanding real-model checks. A complete installer with a bundled runtime and model is a later milestone.
+See [AI Dungeon Master setup and verification](docs/ai-dungeon-master.md) for development launchers, current limits, and real-model checks. The beta installer bundles its own runtimes and guides the separate model downloads.
 
 The [DM workspace guide](docs/dm-workspace.md) covers source imports, grid awareness, calculations, visual assets and history edits. The [beta feedback roadmap](docs/beta-feedback-roadmap.md) tracks survey priorities including combat, multiplayer and save recovery.
 

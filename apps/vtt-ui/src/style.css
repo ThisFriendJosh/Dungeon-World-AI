@@ -147,3 +147,5 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 @media (max-width: 650px) { .dice-panel { padding: 1rem; } .dice-history-heading { flex-wrap: wrap; } }
 
 .dice-result-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.beta-setup-link { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line, #485042); }
+.beta-setup-link .subtle { font-size: .8rem; line-height: 1.5; }

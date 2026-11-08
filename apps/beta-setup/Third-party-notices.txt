@@ -1,0 +1,32 @@
+Dungeon World AI Beta - third-party components
+
+Dungeon World AI is licensed under AGPL-3.0. Source and build instructions:
+https://github.com/ThisFriendJosh/Dungeon-World-AI
+The included LICENSE.txt contains the application license. Source for changes
+in this beta is published with the beta installer pull request in that repository.
+
+Tauri: MIT / Apache-2.0. https://github.com/tauri-apps/tauri
+llama.cpp: MIT. Included license and third-party notices are in licenses/.
+https://github.com/ggml-org/llama.cpp
+CEF / Chromium / CefSharp: see the bundled scrying-cef licenses/ directory and
+LICENSE/credits files in its runtime. https://github.com/cefsharp/CefSharp
+Python: Python Software Foundation license, included in python/LICENSE.txt.
+pip: MIT. License is included in its pip dist-info folder.
+Microsoft Visual C++ runtime files: redistributable components from the licensed
+Visual Studio build environment; Microsoft license terms apply.
+
+Separately downloaded AI components:
+Qwen3-4B-GGUF: Apache-2.0, Qwen.
+https://huggingface.co/Qwen/Qwen3-4B-GGUF
+SD-Turbo: Stability AI Community License. Read its LICENSE.md in the downloaded
+model directory for the model's terms and commercial-use conditions.
+https://huggingface.co/stabilityai/sd-turbo
+PyTorch / torchvision: BSD-style licenses, included in installed packages.
+Diffusers / Transformers / Accelerate: Apache-2.0, included in their packages.
+Pillow: HPND, included in package metadata.
+Safetensors / huggingface_hub: Apache-2.0, included in their packages.
+PyMuPDF: AGPL-3.0 / commercial dual license; this build uses the AGPL option.
+
+Models are downloaded only when selected in setup. AI inference stays local.
+Scrying Pane connects to websites chosen by the user in a separate browser
+profile and does not receive the application's native command bindings.

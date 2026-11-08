@@ -1,0 +1,27 @@
+Action	Condition	Sequence
+s72	S255	I2
+InstallExecuteSequence	Action
+CostFinalize		1000
+CostInitialize		800
+CreateFolders		3700
+CreateShortcuts		4500
+FileCost		900
+FindRelatedProducts		25
+InstallFiles		4000
+InstallFinalize		6600
+InstallInitialize		1500
+InstallValidate		1400
+LaunchConditions		100
+ProcessComponents		1600
+PublishFeatures		6300
+PublishProduct		6400
+RegisterProduct		6100
+RegisterUser		6000
+RemoveExistingProducts	OLDPRODUCTS AND NOT UPGRADINGPRODUCTCODE	1510
+RemoveFiles		3500
+RemoveFolders		3600
+RemoveRegistryValues		2600
+RemoveShortcuts		3200
+UnpublishFeatures		1800
+ValidateProductID		700
+WriteRegistryValues		5000

@@ -1,0 +1,10 @@
+Directory	Directory_Parent	DefaultDir
+s72	S72	l255
+Directory	Directory
+DesktopFolder	TARGETDIR	.
+DwaMenu	ProgramMenuFolder	DWAIBETA|Dungeon World AI Beta
+DwaPrograms	LocalAppDataFolder	Programs
+INSTALLDIR	DwaPrograms	DWAIBETA|Dungeon World AI Beta
+LocalAppDataFolder	TARGETDIR	.
+ProgramMenuFolder	TARGETDIR	.
+TARGETDIR		SourceDir

@@ -1,0 +1,10 @@
+Dialog_	Control_	Event	Argument	Condition	Ordering
+s72	s50	s50	S255	S255	I2
+ControlEvent	Dialog_	Control_	Event	Argument	Condition
+ErrorDlg	Finish	EndDialog	Return	1	2
+FinishDlg	Finish	DoAction	LaunchAI	LAUNCH_AI = 1 AND NOT DWA_NO_LAUNCH	1
+FinishDlg	Finish	EndDialog	Return	1	2
+ProgressDlg	Cancel	EndDialog	Exit	1	1
+UserExitDlg	Finish	EndDialog	Return	1	2
+WelcomeDlg	Cancel	EndDialog	Exit	1	1
+WelcomeDlg	Install	EndDialog	Return	1	1
