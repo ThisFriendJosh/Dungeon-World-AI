@@ -1,3 +1,5 @@
+import {newId} from "./uuid";
+
 export type Point = { x: number; y: number };
 export type TokenKind = "player" | "npc" | "monster" | "object" | "treasure";
 export type BoardToken = Point & {
@@ -21,7 +23,7 @@ export const makeBoard = (): SceneBoard => ({
 });
 const colors: Record<TokenKind,string> = {player:"#d6b973",npc:"#60c4b2",monster:"#df796b",object:"#83aaca",treasure:"#edd17c"};
 export function makeToken(kind: TokenKind, index: number): BoardToken {
-  return {id:crypto.randomUUID(),name:({player:"Adventurer",npc:"NPC",monster:"Monster",object:"Object",treasure:"Treasure"}[kind])+" "+index,
+  return {id:newId(),name:({player:"Adventurer",npc:"NPC",monster:"Monster",object:"Object",treasure:"Treasure"}[kind])+" "+index,
     kind,x:2,y:2,size:1,color:colors[kind],sprite:null,characterId:null,notes:"",states:[],hp:null,maxHp:null,
     hidden:false,locked:false,rotation:0,brightLight:0,dimLight:0};
 }

@@ -701,6 +701,8 @@ name = "dungeon-world-ai-desktop"
 version = "0.1.0"
 dependencies = [
  "dwa-engine",
+ "dwa-local-dm",
+ "serde_json",
  "tauri",
  "tauri-build",
 ]
@@ -716,6 +718,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
+name = "dwa-local-dm"
+version = "0.1.0"
+dependencies = [
+ "dwa-engine",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 

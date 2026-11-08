@@ -2,7 +2,18 @@
 
 An offline-first desktop virtual tabletop for solo play.
 
-## Current milestone: an illustrated oak tabletop with offline rules
+## Current milestone: local AI Dungeon Master integration
+
+- Open the Dungeon Master tab, choose a character, and send a player action to a local GGUF model.
+- Keep accepted actions and narration in the campaign database across restarts.
+- Supply the narrator with recorded character values, public scene cards, the selected rules profile, and actual saved dice rolls.
+- Keep mechanical changes manual; reject malformed or stale replies before saving them.
+- Search local campaign/source packs and compendium descriptions; give the DM read-only table/character inspection and engine arithmetic.
+- Create and save procedural PNG/SVG tokens, and clean up individual history entries with confirmation and Restore.
+
+The AI integration is a development build. See [AI Dungeon Master setup and verification](docs/ai-dungeon-master.md) for the launcher, current limits, and outstanding real-model checks. A complete installer with a bundled runtime and model is a later milestone.
+
+The [DM workspace guide](docs/dm-workspace.md) covers source imports, grid awareness, calculations, visual assets and history edits. The [beta feedback roadmap](docs/beta-feedback-roadmap.md) tracks survey priorities including combat, multiplayer and save recovery.
 
 - Create and pick saved campaigns, with last-save times.
 - Add characters and edit their name, class, level, ability scores, HP, armor class, inventory, conditions, and notes.
@@ -21,7 +32,7 @@ An offline-first desktop virtual tabletop for solo play.
 
 Character statistics are manually recorded. Core calculations are available in Rules; class features, spells, encounter turns, conditions, and derived sheet values remain table decisions. New sheets show placeholder values of 10 until the player records the actual values.
 
-The [repository review](docs/repository-review.md) records the roles of Fari, GameMasterAI, Tauri, dnd-data, and optional local-model/voice tools, followed by the next integration milestones. The first Fari scene/index-card adapter is implemented; see [local tabletop scenes](docs/local-tabletop.md). The [local dice tray](docs/dice.md) adds engine-generated rolls with saved history. The [oak tabletop canvas](docs/tabletop-canvas.md) adds maps, scene selection, image import, tokens, drawing, fog, and light. The supplied artwork is packaged and assigned in [art placement](docs/art-placement.md). [Rules profiles and the local compendium](docs/rules-engine.md) describe edition boundaries and current automation coverage. AI and artwork services currently expose architecture stubs.
+The [repository review](docs/repository-review.md) records the roles of Fari, GameMasterAI, Tauri, dnd-data, and optional local-model/voice tools, followed by the next integration milestones. The first Fari scene/index-card adapter is implemented; see [local tabletop scenes](docs/local-tabletop.md). The [local dice tray](docs/dice.md) adds engine-generated rolls with saved history. The [oak tabletop canvas](docs/tabletop-canvas.md) adds maps, scene selection, image import, tokens, drawing, fog, and light. The supplied artwork is packaged and assigned in [art placement](docs/art-placement.md). [Rules profiles and the local compendium](docs/rules-engine.md) describe edition boundaries and current automation coverage. The native AI narrator now has an initial local runtime and persistence implementation; broader AI modules and the artwork service remain architecture stubs.
 
 ## Layout
 
@@ -30,7 +41,7 @@ The [repository review](docs/repository-review.md) records the roles of Fari, Ga
 | apps/desktop | Tauri desktop app and thin command layer |
 | apps/vtt-ui | Vite/TypeScript campaign workspace; future Fari adapter |
 | services/engine | Independent Rust/SQLite persistence library and regression tests |
-| services/ai | Local proposal interfaces and orchestration stubs |
+| services/ai | Rust local-model runtime and narrator prompt; future TypeScript module interfaces |
 | services/art | Artwork pipeline boundary |
 | packages/shared | Shared schemas and the bundled artwork catalog |
 
@@ -71,6 +82,7 @@ Campaign commands require the desktop app. The browser preview explains this in 
 ```sh
 npm run check
 npm run test:engine
+npm run test:ai
 npm run test:ui
 npm run check:rust
 npm run build:ui

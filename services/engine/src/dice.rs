@@ -314,7 +314,7 @@ impl CampaignStore {
 
     pub fn load_dice_rolls(&self, campaign_id: &str) -> Result<Vec<DiceRoll>, EngineError> {
         let conn = connect(&self.locate(campaign_id)?, false)?;
-        let mut stmt = conn.prepare("SELECT payload_json FROM events WHERE campaign_id = ?1 AND event_type = 'dice.rolled' ORDER BY seq DESC LIMIT 50")?;
+        let mut stmt = conn.prepare("SELECT payload_json FROM events e WHERE campaign_id = ?1 AND event_type = 'dice.rolled' AND NOT EXISTS(SELECT 1 FROM event_visibility v WHERE v.campaign_id=e.campaign_id AND v.event_seq=e.seq AND v.removed=1) ORDER BY seq DESC LIMIT 50")?;
         let rows = stmt.query_map([campaign_id], |row| row.get::<_, String>(0))?;
         let mut rolls = Vec::new();
         for row in rows {

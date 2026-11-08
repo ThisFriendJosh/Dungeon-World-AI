@@ -2,6 +2,7 @@
 // Adapted from Fari's IScene/IIndexCard and SceneFactory. See THIRD_PARTY_NOTICES.md.
 // This first adapter supports top-level cards with plain-text notes.
 import {makeBoard} from "../board-model";
+import {newId} from "../uuid";
 import type {SceneBoard} from "../board-model";
 export type SceneTextBlock = {
   id: string; type: "Text"; label: string; value: string; meta: Record<string, never>;
@@ -18,13 +19,13 @@ export type FariScene = {
 };
 export type TabletopState = { scene: FariScene | null; revision: number; updatedAt: string | null };
 export const makeScene = (): FariScene => ({
-  id: crypto.randomUUID(), name: "Current scene",
+  id: newId(), name: "Current scene",
   indexCards: { public: [], private: [] }, board: makeBoard(),
   version: 3, lastUpdated: Math.floor(Date.now() / 1000), notes: ""
 });
 export const makeSceneCard = (): SceneCard => ({
-  id: crypto.randomUUID(), titleLabel: "Note", title: "", color: "#d6b973",
+  id: newId(), titleLabel: "Note", title: "", color: "#d6b973",
   playedDuringTurn: false, pinned: false, sub: false, subCards: [],
-  blocks: [{ id: crypto.randomUUID(), type: "Text", label: "Notes", value: "", meta: {} }]
+  blocks: [{ id: newId(), type: "Text", label: "Notes", value: "", meta: {} }]
 });
 export const copyScene = (scene: FariScene): FariScene => structuredClone(scene);

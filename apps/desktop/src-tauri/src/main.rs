@@ -5,8 +5,155 @@ use dwa_engine::{
     Saved, TabletopState,
 };
 use dwa_engine::{DiceRequest, DiceRoll, ImageImport, SceneImage, SceneSummary};
+use dwa_engine::{DmHistory, DmTurn, DmTurnRequest};
 use dwa_engine::{RulesCalculation, RulesConfig, RulesQuery, RulesState};
+use dwa_local_dm::{LocalDm, RuntimeConfig, RuntimeStatus, PROMPT_VERSION};
 use tauri::{Manager, State};
+
+#[tauri::command]
+fn list_knowledge_sources(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<dwa_engine::KnowledgeSource>, String> {
+    store
+        .list_knowledge_sources(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn import_knowledge(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::KnowledgeImport,
+) -> Result<Saved<dwa_engine::KnowledgeSource>, String> {
+    store
+        .import_knowledge(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn search_dm_references(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    query: String,
+) -> Result<Vec<dwa_engine::ReferenceHit>, String> {
+    store
+        .search_dm_references(&campaign_id, &query)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_editable_history(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<dwa_engine::HistoryEntry>, String> {
+    store
+        .load_editable_history(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn edit_history_entry(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::HistoryEdit,
+) -> Result<Saved<serde_json::Value>, String> {
+    store
+        .edit_history_entry(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn preview_token_asset(
+    store: State<'_, CampaignStore>,
+    spec: dwa_engine::TokenSpec,
+) -> Result<String, String> {
+    store.preview_token_asset(spec).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn save_token_asset(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::TokenAssetRequest,
+) -> Result<Saved<dwa_engine::GeneratedAsset>, String> {
+    store
+        .save_token_asset(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn list_generated_assets(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<dwa_engine::GeneratedAsset>, String> {
+    store
+        .list_generated_assets(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_generated_asset(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    store
+        .load_generated_asset(&campaign_id, &id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_dm_history(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<DmHistory, String> {
+    store
+        .load_dm_history(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn dm_runtime_status(runtime: State<'_, LocalDm>) -> Result<RuntimeStatus, String> {
+    runtime.status()
+}
+
+#[tauri::command]
+fn cancel_dm_turn(runtime: State<'_, LocalDm>) -> Result<bool, String> {
+    runtime.cancel()
+}
+
+#[tauri::command]
+async fn play_dm_turn(
+    app: tauri::AppHandle,
+    campaign_id: String,
+    request: DmTurnRequest,
+) -> Result<Saved<DmTurn>, String> {
+    // Model startup and generation never block the webview/main thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<CampaignStore>();
+        if let Some(turn) = store
+            .find_dm_turn(&campaign_id, &request)
+            .map_err(|e| e.to_string())?
+        {
+            return Ok(Saved {
+                value: turn,
+                warning: None,
+            });
+        }
+        let context = store
+            .prepare_dm_context(&campaign_id, &request)
+            .map_err(|e| e.to_string())?;
+        app.state::<LocalDm>().run_turn_with_tools(
+            &context,
+            &request.player_text,
+            |tool| {
+                store
+                    .read_dm_tool(&campaign_id, context.state_seq, tool)
+                    .map_err(|e| e.to_string())
+            },
+            |proposal, model| {
+                store
+                    .commit_dm_turn(&campaign_id, &request, proposal, model, PROMPT_VERSION)
+                    .map_err(|e| e.to_string())
+            },
+        )
+    })
+    .await
+    .map_err(|e| format!("DM worker stopped: {e}"))?
+}
 
 #[tauri::command]
 fn list_campaigns(store: State<'_, CampaignStore>) -> Result<Vec<CampaignSummary>, String> {
@@ -245,6 +392,10 @@ fn main() {
                 _ => app.path().app_data_dir()?,
             };
             app.manage(CampaignStore::new(data_dir.join("campaigns"))?);
+            app.manage(LocalDm::new(RuntimeConfig::discover(
+                app.path().resource_dir()?,
+                data_dir.join("logs"),
+            )));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -271,8 +422,26 @@ fn main() {
             list_content_packs,
             list_content_books,
             search_content,
-            load_content_entry
+            load_content_entry,
+            load_dm_history,
+            dm_runtime_status,
+            play_dm_turn,
+            cancel_dm_turn,
+            list_knowledge_sources,
+            import_knowledge,
+            search_dm_references,
+            load_editable_history,
+            edit_history_entry,
+            preview_token_asset,
+            save_token_asset,
+            list_generated_assets,
+            load_generated_asset
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Dungeon World AI");
+        .build(tauri::generate_context!())
+        .expect("error while building Dungeon World AI")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                app.state::<LocalDm>().shutdown();
+            }
+        });
 }
