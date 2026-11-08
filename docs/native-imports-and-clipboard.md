@@ -43,3 +43,13 @@ The controller now discards that intermediate prose/choices, performs the valida
 Saved player/DM turns are now sent as alternating chat roles, with the current state and new action in the final user message. This distinguishes the latest action from previous opening narration; it is not a guarantee of model-quality continuity.
 
 Four new regression tests pass: mixed-draft recovery with real engine arithmetic and save/reopen, disjoint response forms, bounded/excessive reads and conversation ordering/trimmed history. The AI suite has 10 passing tests plus the opt-in socket test; with the unchanged prior engine/frontend/PDF results, the recorded total is 107 passing tests. The new controller tests use scripted model responses, not a claim of a new real-model playthrough.
+
+## Runtime response contract (v0.5)
+
+A further normal-host test returned “invalid proposal.” Inspection of the installed llama.cpp runtime's `tools/server/server-common.cpp` found the adapter mismatch: for response type `json_schema`, this runtime reads `response_format.json_schema.schema`. The adapter had supplied a sibling `response_format.schema`, which the runtime ignored, falling back to generic JSON. Thus the earlier schema-shape tests did not establish that the runtime was receiving the DM contract.
+
+The adapter now sends the nested schema wrapper with a name and strict flag. A regression test checks the exact runtime field path, and the existing lookup-budget test also checks that path for the final-only schema.
+
+If decoding still fails, the app writes the failed response content, finish reason, prompt/model identity and decode error to `logs/dm-response-error.json` in its data folder. It does not dump the request context, HTTP headers or separate reasoning field. Failed content can contain campaign fiction; this diagnostic stays local and is excluded from the source repository. Failure to write the diagnostic preserves the original error. Invalid output still cannot execute a lookup or save a turn.
+
+All 12 AI tests passed from a fresh build-output directory, including the two added contract/diagnostic regressions. The embedded Windows build and offline source policy also passed. With the unchanged prior engine/frontend/PDF checks, the recorded total is 109 passing tests. The v0.5 live-model retry remains a normal-host acceptance check.
