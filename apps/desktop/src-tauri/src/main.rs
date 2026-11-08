@@ -155,9 +155,77 @@ fn import_knowledge(
     store: State<'_, CampaignStore>,
     campaign_id: String,
     request: dwa_engine::KnowledgeImport,
+    original: Option<dwa_engine::OriginalDocumentImport>,
 ) -> Result<Saved<dwa_engine::KnowledgeSource>, String> {
     store
-        .import_knowledge(&campaign_id, request)
+        .import_knowledge_with_original(&campaign_id, request, original)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn read_knowledge_document(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+    offset: u32,
+) -> Result<dwa_engine::KnowledgeDocument, String> {
+    store
+        .read_knowledge_document(&campaign_id, &id, offset)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn search_knowledge_document(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+    query: String,
+) -> Result<Vec<dwa_engine::DocumentPassage>, String> {
+    store
+        .search_knowledge_document(&campaign_id, &id, &query)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn attach_knowledge_original(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+    original: dwa_engine::OriginalDocumentImport,
+) -> Result<Saved<dwa_engine::OriginalDocument>, String> {
+    store
+        .attach_knowledge_original(&campaign_id, &id, original)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn export_knowledge_original(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    use base64::Engine;
+    let (meta, bytes) = store
+        .knowledge_original_bytes(&campaign_id, &id)
+        .map_err(|e| e.to_string())?;
+    Ok(
+        serde_json::json!({"name":meta.name,"mediaType":meta.media_type,"dataBase64":base64::engine::general_purpose::STANDARD.encode(bytes)}),
+    )
+}
+#[tauri::command]
+fn calculate_campaign(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::CalculationRequest,
+) -> Result<Saved<dwa_engine::CalculationRecord>, String> {
+    store
+        .calculate_campaign(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn list_calculations(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    offset: u32,
+) -> Result<Vec<dwa_engine::CalculationRecord>, String> {
+    store
+        .list_calculations(&campaign_id, offset)
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
@@ -652,6 +720,13 @@ fn main() {
             cancel_dm_turn,
             list_knowledge_sources,
             import_knowledge,
+            read_knowledge_document,
+            search_knowledge_document,
+            attach_knowledge_original,
+            export_knowledge_original,
+            reference_documents::render_reference_pdf_page,
+            calculate_campaign,
+            list_calculations,
             search_dm_references,
             load_editable_history,
             edit_history_entry,

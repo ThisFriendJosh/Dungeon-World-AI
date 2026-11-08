@@ -134,8 +134,9 @@ fn reference_search_covers_descriptions_and_respects_edition_labels() {
     let hits = store
         .search_dm_references(&campaign.id, "Moonember")
         .unwrap();
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].title, "Veil");
+    assert_eq!(hits.len(), 2);
+    assert!(hits.iter().any(|h| h.title == "Veil"));
+    assert!(hits.iter().any(|h| h.title == "Old edition"));
     let sources = store.list_knowledge_sources(&campaign.id).unwrap();
     assert_eq!(sources[0].edition, "AD&D-2e");
     let conn = connect(&store.locate(&campaign.id).unwrap(), false).unwrap();
@@ -146,7 +147,10 @@ fn reference_search_covers_descriptions_and_respects_edition_labels() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(store.read_dm_reference(&campaign.id, &foreign_id).is_err());
+    assert_eq!(
+        store.read_dm_reference(&campaign.id, &foreign_id).unwrap()["edition"],
+        "AD&D-2e"
+    );
     assert!(store
         .search_dm_references(&campaign.id, "advantage disadvantage")
         .unwrap()
@@ -505,4 +509,526 @@ fn generated_asset_persists_png_svg_and_recipe_atomically_with_xml_escaping() {
     let mut invalid = spec();
     invalid.color = "url(x)".into();
     assert!(store.preview_token_asset(invalid).is_err());
+}
+
+#[test]
+fn document_reader_preserves_original_and_reads_every_saved_section_after_reopen() {
+    let data = Data::new();
+    let store = data.store();
+    let campaign = store.create_campaign("Reader").unwrap().value;
+    let other = store.create_campaign("Private").unwrap().value;
+    let text = format!(
+        "{}\nTAIL_SECRET_RELIC",
+        "Lore of the ancient gate. ".repeat(800)
+    );
+    let original = b"original source bytes including tables and illustrations";
+    let imported = store
+        .import_knowledge_with_original(
+            &campaign.id,
+            source("Gate manuscript", &text, "5e-2014"),
+            Some(OriginalDocumentImport {
+                name: "Gate manuscript.txt".into(),
+                data_base64: STANDARD.encode(original),
+            }),
+        )
+        .unwrap()
+        .value;
+    let old = store
+        .import_knowledge(
+            &campaign.id,
+            source("Older text", "Existing text remains readable.", "homebrew"),
+        )
+        .unwrap()
+        .value;
+    drop(store);
+    let store = data.store();
+    let doc = store
+        .read_knowledge_document(&campaign.id, &imported.id, 0)
+        .unwrap();
+    assert!(doc.next_offset.is_some());
+    assert_eq!(doc.original.unwrap().byte_count, original.len() as i64);
+    let hit = store
+        .search_dm_references(&campaign.id, "TAIL_SECRET_RELIC")
+        .unwrap()
+        .into_iter()
+        .find(|h| h.kind == "campaign")
+        .unwrap();
+    assert_eq!(
+        store
+            .read_knowledge_document(&campaign.id, &hit.id, 0)
+            .unwrap()
+            .source
+            .id,
+        imported.id
+    );
+    let found = store
+        .search_knowledge_document(&campaign.id, &imported.id, "TAIL_SECRET_RELIC")
+        .unwrap();
+    assert!(found[0].ordinal >= 6);
+    let last = store
+        .read_knowledge_document(&campaign.id, &imported.id, found[0].ordinal)
+        .unwrap();
+    assert!(last.passages[0].text.contains("TAIL_SECRET_RELIC"));
+    assert!(last.next_offset.is_none());
+    assert_eq!(
+        store
+            .knowledge_original_bytes(&campaign.id, &hit.id)
+            .unwrap()
+            .1,
+        original
+    );
+    assert!(store
+        .read_knowledge_document(&campaign.id, &old.id, 0)
+        .unwrap()
+        .original
+        .is_none());
+    assert!(store
+        .knowledge_original_bytes(&campaign.id, &old.id)
+        .is_err());
+    assert!(store
+        .read_knowledge_document(&other.id, &hit.id, 0)
+        .is_err());
+    assert!(store
+        .knowledge_original_bytes(&other.id, &imported.id)
+        .is_err());
+    assert!(store
+        .attach_knowledge_original(
+            &other.id,
+            &old.id,
+            OriginalDocumentImport {
+                name: "Gate.txt".into(),
+                data_base64: STANDARD.encode(original)
+            }
+        )
+        .is_err());
+    store
+        .attach_knowledge_original(
+            &campaign.id,
+            &old.id,
+            OriginalDocumentImport {
+                name: "Gate.txt".into(),
+                data_base64: STANDARD.encode(original),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .read_knowledge_document(&campaign.id, &old.id, 0)
+            .unwrap()
+            .passages[0]
+            .text,
+        "Existing text remains readable."
+    );
+}
+
+#[test]
+fn original_document_and_index_save_atomically_and_reject_invalid_uploads() {
+    let data = Data::new();
+    let store = data.store();
+    let campaign = store.create_campaign("Atomic documents").unwrap().value;
+    let before = seq(&store, &campaign.id);
+    for (name, bytes) in [
+        ("../escape.txt", "eA=="),
+        ("broken.pdf", "eA=="),
+        ("empty.txt", ""),
+        ("bad.exe", "eA=="),
+        ("bad.txt", "%%%"),
+    ] {
+        assert!(store
+            .import_knowledge_with_original(
+                &campaign.id,
+                source("Bad file", "test text", "homebrew"),
+                Some(OriginalDocumentImport {
+                    name: name.into(),
+                    data_base64: bytes.into()
+                })
+            )
+            .is_err());
+    }
+    let conn = connect(&store.locate(&campaign.id).unwrap(), false).unwrap();
+    conn.execute_batch("CREATE TRIGGER fail_original BEFORE INSERT ON knowledge_originals BEGIN SELECT RAISE(ABORT,'fixture write failure'); END;").unwrap();
+    assert!(store
+        .import_knowledge_with_original(
+            &campaign.id,
+            source("Rollback original", "rollbackmarker", "homebrew"),
+            Some(OriginalDocumentImport {
+                name: "file.txt".into(),
+                data_base64: STANDARD.encode("file")
+            })
+        )
+        .is_err());
+    assert_eq!(seq(&store, &campaign.id), before);
+    assert!(store
+        .list_knowledge_sources(&campaign.id)
+        .unwrap()
+        .is_empty());
+    assert!(store
+        .search_dm_references(&campaign.id, "rollbackmarker")
+        .unwrap()
+        .is_empty());
+}
+
+fn inspect(
+    store: &CampaignStore,
+    campaign: &str,
+    scope: &str,
+    id: Option<String>,
+    section: &str,
+    offset: u32,
+) -> Result<Value, EngineError> {
+    store.read_dm_tool(
+        campaign,
+        seq(store, campaign),
+        DmReadRequest::Inspect {
+            scope: scope.into(),
+            id,
+            section: section.into(),
+            offset,
+        },
+    )
+}
+fn read_detail(
+    store: &CampaignStore,
+    campaign: &str,
+    scope: &str,
+    id: Option<String>,
+    section: &str,
+) -> Value {
+    let mut offset = 0;
+    let mut encoded = String::new();
+    loop {
+        let page = inspect(store, campaign, scope, id.clone(), section, offset).unwrap();
+        if !page["data"].is_null() {
+            return page["data"].clone();
+        }
+        encoded.push_str(page["text"].as_str().unwrap());
+        if let Some(next) = page["nextOffset"].as_u64() {
+            assert!(next > offset as u64);
+            offset = next as u32;
+        } else {
+            break;
+        }
+    }
+    serde_json::from_str(&encoded).unwrap()
+}
+
+#[test]
+fn saved_calculations_are_engine_computed_previews_and_visible_in_dm_context() {
+    let data = Data::new();
+    let store = data.store();
+    let campaign = store.create_campaign("Awareness").unwrap().value;
+    let other = store.create_campaign("Other awareness").unwrap().value;
+    let actor = store
+        .create_character(&campaign.id, "Test hero", "Barbarian")
+        .unwrap()
+        .value;
+    let sheet = store.load_characters(&campaign.id).unwrap()[0]
+        .stats_json
+        .clone();
+    let before = seq(&store, &campaign.id);
+    let bad = CalculationRequest {
+        character_id: Some(Uuid::new_v4().to_string()),
+        operation: CalculationOperation::Arithmetic {
+            expression: "1+1".into(),
+        },
+    };
+    assert!(store.calculate_campaign(&campaign.id, bad).is_err());
+    assert_eq!(before, seq(&store, &campaign.id));
+    let math = store
+        .calculate_campaign(
+            &campaign.id,
+            CalculationRequest {
+                character_id: Some(actor.id.clone()),
+                operation: CalculationOperation::Arithmetic {
+                    expression: "(12+8)/2".into(),
+                },
+            },
+        )
+        .unwrap()
+        .value;
+    assert_eq!(math.result, 10.0);
+    assert!(math.preview_only);
+    let rules = store
+        .calculate_campaign(
+            &campaign.id,
+            CalculationRequest {
+                character_id: Some(actor.id.clone()),
+                operation: CalculationOperation::Rules {
+                    query: RulesQuery {
+                        ability_score: 16,
+                        level: 3,
+                        damage: 24,
+                        exhaustion: 0,
+                        speed: 30,
+                    },
+                },
+            },
+        )
+        .unwrap()
+        .value;
+    assert_eq!(rules.result["concentrationDc"], 12);
+    assert_eq!(rules.result["profile"], "5e-2024");
+    let damage=store.calculate_campaign(&campaign.id,serde_json::from_value(json!({"characterId":actor.id,"operation":{"kind":"damage","query":{"hp":10,"maxHp":20,"tempHp":3,"amount":9,"healing":false,"resistance":true,"vulnerability":false,"immune":false}}})).unwrap()).unwrap().value;
+    assert_eq!(damage.result["hpAfter"], 9);
+    assert_eq!(damage.result["tempHpAfter"], 0);
+    let revision = store.load_game_tools(&campaign.id).unwrap().revision;
+    store
+        .change_game_tools(
+            &campaign.id,
+            ToolMutation {
+                expected_revision: revision,
+                operation: TimerOperation::Advance { seconds: 600 },
+            },
+        )
+        .unwrap();
+    let roll = store
+        .roll_dice(
+            &campaign.id,
+            DiceRequest {
+                expression: "1d20+3".into(),
+                mode: DiceMode::Normal,
+                character_id: Some(actor.id.clone()),
+                label: "Guard persuasion".into(),
+            },
+        )
+        .unwrap()
+        .value;
+    store.save_tabletop(&campaign.id, grid_scene(), 0).unwrap();
+    let request = DmTurnRequest {
+        request_id: Uuid::new_v4().to_string(),
+        actor_id: Some(actor.id.clone()),
+        player_text: "What has happened?".into(),
+        expected_seq: seq(&store, &campaign.id),
+    };
+    let context = store.prepare_dm_context(&campaign.id, &request).unwrap();
+    assert_eq!(context.state["timekeeping"]["gameTimeMs"], 600000);
+    assert_eq!(
+        context.state["calculationHistory"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert_eq!(context.state["recordedDiceRolls"][0]["id"], roll.id);
+    assert_eq!(context.state["gmContext"]["board"]["tokens"][1]["x"], 4.0);
+    assert_eq!(context.state["party"][0]["id"], actor.id);
+    assert_eq!(
+        store.load_characters(&campaign.id).unwrap()[0].stats_json,
+        sheet
+    );
+    assert!(store.list_calculations(&other.id, 0).unwrap().is_empty());
+    assert!(serde_json::from_value::<CalculationRequest>(json!({"characterId":null,"operation":{"kind":"arithmetic","expression":"1+1"},"result":999})).is_err());
+    drop(store);
+    let store = data.store();
+    assert_eq!(store.list_calculations(&campaign.id, 0).unwrap().len(), 3);
+    edit(&store, &campaign.id, math.event_seq, true).unwrap();
+    assert_eq!(store.list_calculations(&campaign.id, 0).unwrap().len(), 2);
+    assert!(inspect(
+        &store,
+        &campaign.id,
+        "progress",
+        Some(math.event_seq.to_string()),
+        "activity",
+        0
+    )
+    .is_err());
+    let list = inspect(&store, &campaign.id, "progress", None, "activity", 0).unwrap();
+    assert!(!list["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["id"] == math.event_seq.to_string()));
+}
+
+#[test]
+fn dm_can_inspect_full_scene_blocks_character_notes_and_document_tails() {
+    let data = Data::new();
+    let store = data.store();
+    let campaign = store.create_campaign("Full details").unwrap().value;
+    let other = store.create_campaign("Other details").unwrap().value;
+    let mut scene = grid_scene();
+    scene.notes = format!("{}TAIL_SCENE_NOTE", "n".repeat(8000));
+    let card:SceneCard=serde_json::from_value(json!({"id":Uuid::new_v4().to_string(),"titleLabel":"NPC","title":"Gatekeeper","color":"#abcdef","playedDuringTurn":false,"pinned":false,"blocks":[{"id":Uuid::new_v4().to_string(),"type":"Text","label":"Visible","value":format!("{}TAIL_CARD_DETAIL","c".repeat(8000)),"meta":{}}],"subCards":[],"sub":false})).unwrap();
+    scene.index_cards.private.push(card);
+    let scene_id = scene.id.clone();
+    store.save_tabletop(&campaign.id, scene, 0).unwrap();
+    let cards = read_detail(&store, &campaign.id, "scene", None, "cards");
+    assert!(cards["private"][0]["blocks"][0]["value"]
+        .as_str()
+        .unwrap()
+        .ends_with("TAIL_CARD_DETAIL"));
+    let card_id = cards["private"][0]["id"].as_str().unwrap();
+    let card = read_detail(
+        &store,
+        &campaign.id,
+        "scene",
+        None,
+        &format!("card:{card_id}"),
+    );
+    assert!(card["blocks"][0]["value"]
+        .as_str()
+        .unwrap()
+        .ends_with("TAIL_CARD_DETAIL"));
+    let notes = read_detail(&store, &campaign.id, "scene", None, "notes");
+    assert!(notes.as_str().unwrap().ends_with("TAIL_SCENE_NOTE"));
+    assert!(inspect(&store, &other.id, "scene", Some(scene_id), "all", 0).is_err());
+    let actor = store
+        .create_character(&campaign.id, "Test hero", "Barbarian")
+        .unwrap()
+        .value;
+    let conn = connect(&store.locate(&campaign.id).unwrap(), false).unwrap();
+    let long_notes = json!({"journal":format!("{}TAIL_CHARACTER_JOURNAL","n".repeat(11000))});
+    conn.execute(
+        "UPDATE characters SET progression_json=?1 WHERE id=?2",
+        params![long_notes.to_string(), actor.id],
+    )
+    .unwrap();
+    assert_eq!(
+        read_detail(
+            &store,
+            &campaign.id,
+            "character",
+            Some(actor.id.clone()),
+            "notes"
+        ),
+        long_notes
+    );
+    assert!(inspect(&store, &other.id, "character", Some(actor.id), "notes", 0).is_err());
+    let source = store
+        .import_knowledge(
+            &campaign.id,
+            source(
+                "Long reference",
+                &format!("{}TAIL_DOCUMENT", "Lore ".repeat(3000)),
+                "homebrew",
+            ),
+        )
+        .unwrap()
+        .value;
+    let mut offset = 0;
+    let mut text = String::new();
+    loop {
+        let page = inspect(
+            &store,
+            &campaign.id,
+            "document",
+            Some(source.id.clone()),
+            "",
+            offset,
+        )
+        .unwrap();
+        text.push_str(page["passage"]["text"].as_str().unwrap());
+        if let Some(next) = page["nextOffset"].as_u64() {
+            offset = next as u32;
+        } else {
+            break;
+        }
+    }
+    assert!(text.ends_with("TAIL_DOCUMENT"));
+    assert!(inspect(&store, &other.id, "document", Some(source.id), "", 0).is_err());
+}
+
+#[test]
+fn calculation_and_activity_pages_reach_older_results_without_hidden_entries() {
+    let data = Data::new();
+    let store = data.store();
+    let campaign = store.create_campaign("Long progress").unwrap().value;
+    for n in 0..23 {
+        store
+            .calculate_campaign(
+                &campaign.id,
+                CalculationRequest {
+                    character_id: None,
+                    operation: CalculationOperation::Arithmetic {
+                        expression: format!("{n}+1"),
+                    },
+                },
+            )
+            .unwrap();
+    }
+    let first = inspect(&store, &campaign.id, "progress", None, "calculations", 0).unwrap();
+    assert_eq!(first["entries"].as_array().unwrap().len(), 20);
+    assert_eq!(first["nextOffset"], 20);
+    let last = inspect(&store, &campaign.id, "progress", None, "calculations", 20).unwrap();
+    assert_eq!(last["entries"].as_array().unwrap().len(), 3);
+    assert_eq!(last["entries"][2]["result"], 1.0);
+    let activity = inspect(&store, &campaign.id, "progress", None, "activity", 0).unwrap();
+    assert_eq!(activity["nextOffset"], 10);
+    let older = inspect(&store, &campaign.id, "progress", None, "activity", 10).unwrap();
+    assert_ne!(older["entries"][0]["id"], activity["entries"][0]["id"]);
+    let payload = read_detail(
+        &store,
+        &campaign.id,
+        "progress",
+        Some(older["entries"][0]["id"].as_str().unwrap().into()),
+        "activity",
+    );
+    assert_eq!(payload["previewOnly"], true);
+}
+
+#[test]
+fn full_reference_paging_preserves_long_fields_and_keeps_rules_edition_boundaries() {
+    let data = Data::new();
+    let store = data.store();
+    let campaign = store.create_campaign("Reference pages").unwrap().value;
+    store
+        .import_content(
+            &campaign.id,
+            ContentImport {
+                name: "Lore items".into(),
+                kind: "items".into(),
+                entries: vec![
+                    ContentEntry {
+                        name: "Chronicle stone".into(),
+                        description: format!("{}TAIL_REFERENCE_FIELD", "lore ".repeat(2400)),
+                        properties: json!({}),
+                        publisher: "Test".into(),
+                        book: "Test 2024".into(),
+                    },
+                    ContentEntry {
+                        name: "Legacy stone".into(),
+                        description: "Editionlocked rules.".into(),
+                        properties: json!({}),
+                        publisher: "Test".into(),
+                        book: "Test 2014".into(),
+                    },
+                ],
+            },
+        )
+        .unwrap();
+    let hit = store
+        .search_dm_references(&campaign.id, "TAIL_REFERENCE_FIELD")
+        .unwrap()
+        .into_iter()
+        .find(|h| h.title == "Chronicle stone")
+        .unwrap();
+    let mut offset = 0;
+    let mut text = String::new();
+    loop {
+        let page = inspect(
+            &store,
+            &campaign.id,
+            "reference",
+            Some(hit.id.clone()),
+            "text",
+            offset,
+        )
+        .unwrap();
+        text.push_str(page["text"].as_str().unwrap());
+        if let Some(next) = page["nextOffset"].as_u64() {
+            offset = next as u32;
+        } else {
+            break;
+        }
+    }
+    assert!(text.contains("TAIL_REFERENCE_FIELD"));
+    let conn = connect(&store.locate(&campaign.id).unwrap(), false).unwrap();
+    let legacy: String = conn
+        .query_row(
+            "SELECT reference_id FROM dm_reference_index WHERE title='Legacy stone'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(inspect(&store, &campaign.id, "reference", Some(legacy), "text", 0).is_err());
 }

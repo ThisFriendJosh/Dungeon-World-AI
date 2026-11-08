@@ -66,7 +66,7 @@ pub(crate) fn initialize_new_rules(
     tx.execute("INSERT INTO campaign_rules(campaign_id,config_json,revision,updated_at) VALUES (?1,?2,1,?3)",params![campaign_id,config,timestamp])?;
     Ok(())
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RulesQuery {
     pub ability_score: i64,

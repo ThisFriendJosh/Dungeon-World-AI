@@ -1,5 +1,5 @@
 export type SourceDraft={title:string;text:string;sourceRef:string;edition:string;gmOnly:boolean};
-export type PreparedImport={source:SourceDraft;method:string;warnings:string[];collection?:{name:string;kind:string;entries:unknown[]}};
+export type PreparedImport={source:SourceDraft;method:string;warnings:string[];original?:{name:string;dataBase64:string};collection?:{name:string;kind:string;entries:unknown[]}};
 const editions=["homebrew","unassigned","5e-2014","5e-2024","AD&D-2e",""];
 const datasets=["backgrounds","classes","items","monsters","species","spells"];
 export const titleFor=(name:string)=>name.replace(/\.[^.]+$/,"").slice(0,120)||"Imported source";

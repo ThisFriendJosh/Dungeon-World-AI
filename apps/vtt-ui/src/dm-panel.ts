@@ -37,7 +37,7 @@ export class DmPanel {
     return `<section class="dm-panel" aria-label="AI Dungeon Master">
       <header class="dm-heading"><div><p class="eyebrow">The next chapter is yours</p><h2>Dungeon Master</h2></div>
         <span class="dm-model-state">${this.pending?"Preparing your reply…":ready?"Local AI · Offline":"Local model unavailable"}</span></header>
-      <p class="subtle dm-scope">Describe what you do, ask an NPC a question, or set an opening scene. Accepted turns save automatically. Use Dice for checks and your character sheet for game statistics.</p>
+      <p class="subtle dm-scope">Describe what you do, ask an NPC a question, or set an opening scene. Accepted turns save automatically. The DM can consult saved sheets, tabletop positions, rolls, clocks, calculations, and Compendium text. Save sheet and scene edits before asking about them.</p>
       ${!ready?'<p class="dm-notice">Add the local Dungeon Master with <strong>Set up local AI</strong> in the sidebar, then reopen the app. Saved conversations and campaign tools are available now.</p>':""}
       <div class="dm-transcript" role="log" aria-label="Saved adventure conversation">
         ${this.history.turns.length?this.history.turns.map(turn=>`<article class="dm-turn">

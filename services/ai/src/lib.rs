@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub const PROMPT_VERSION: &str = "dm-narrator-v0.5-tools";
+pub const PROMPT_VERSION: &str = "dm-narrator-v0.6-saved-workspace";
 const CONTEXT_TOKENS: usize = 8192;
 const OUTPUT_TOKENS: usize = 1024;
 const RESPONSE_LIMIT: u64 = 1_000_000;
@@ -46,6 +46,18 @@ Armor Class 14 is AC 14, never a +14 bonus. A recorded 4 does not establish a cr
 failure. Without a check type, formula/bonus, and DC/target, ask what the roll was for.
 
 READ TOOLS (no state changes): request relevant data with the requests array.
+inspect {scope,id,section,offset}: read all saved details in bounded pages. Start offset 0. For progress/activity use id null for the paged event list, then an entry id for its full payload. Continue using nextOffset; character/scene/payload offsets are characters, catalog/document/progress-list offsets are entries.
+scope=catalog, id=null: sections documents/scenes/characters/art/images, then use returned IDs.
+scope=reference, id=reference ID from search: section=text, offset is character position; follow nextOffset.
+scope=document, id=source ID: section=text, offset is passage index. Every saved passage is accessible.
+scope=character, id=character ID: sections stats/inventory/conditions/notes/all; offset is text position.
+scope=scene, id=scene ID or null for active: sections all/notes/cards/cardCatalog/board/drawings/fog, or card:UUID / token:UUID for a single entry; offset is text position.
+scope=progress, id=null: sections calculations/rolls/activity (entry offsets) or timers (text position).
+Follow nextOffset when present. Full scene details include all card blocks and grid/fog geometry.
+Calculation history contains PREVIEWS, not applied HP or resource changes. Saved sheets remain authoritative.
+Only saved app data is visible; unsaved edits and unrecorded real-world actions are unknown.
+This narrator reads text and structured state. It cannot visually interpret an illustration or a map image.
+Use OCR text, saved descriptions, token positions and notes. Do not claim to have seen an image's contents.
 search {query}: search all imported campaign/reference text, compendium entries, and the
 matching bundled SRD; reference {id}: read a returned reference passage and its source.
 scene {sceneId:null,tokenId:null}: inspect the saved scene; use a known scene ID for another
@@ -63,7 +75,7 @@ Use the engine arithmetic tool for numerical calculations beyond values already 
 
 Return one JSON object only: {"schemaVersion":1,"narration":"...","choices":["..."],"requests":[]}.
 To request reads instead of replying, set narration to "", choices to [], and requests to
-1 or 2 read-tool objects with a kind field (search/reference/scene/character/distance/arithmetic).
+1 or 2 read-tool objects with a kind field (inspect/search/reference/scene/character/distance/arithmetic).
 After the app supplies results, return narration and no requests, or use another permitted
 read round. The app supplies readsRemaining. At zero, finish or ask the smallest clarification.
 Lookups happen before the player-facing reply. Any words or choices drafted alongside
@@ -778,6 +790,10 @@ fn proposal_schema(allow_reads: bool) -> Value {
     let object = |properties: Value, required: Vec<&str>| json!({"type":"object","additionalProperties":false,"properties":properties,"required":required});
     let nullable_id = json!({"type":["string","null"],"maxLength":80});
     let tools = vec![
+        object(
+            json!({"kind":{"const":"inspect"},"scope":{"enum":["document","reference","catalog","character","scene","progress"]},"id":nullable_id,"section":text(80),"offset":{"type":"integer","minimum":0,"maximum":100000000}}),
+            vec!["kind", "scope", "id", "section", "offset"],
+        ),
         object(
             json!({"kind":{"const":"search"},"query":text(500)}),
             vec!["kind", "query"],

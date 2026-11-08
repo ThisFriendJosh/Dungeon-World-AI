@@ -258,8 +258,8 @@ impl CampaignStore {
             "publicCards":s.index_cards.public.iter().take(8).map(|c| json!({"title":c.title,
                 "text":c.blocks.first().map(|b|short(&b.value,512)).unwrap_or_default()})).collect::<Vec<_>>() }));
         let rules = self.load_rules_settings(campaign_id)?;
-        let timers=self.load_game_tools(campaign_id)?;
-        let timekeeping=json!({"gmKnowledgeOnly":true,"gameTimeMs":timers.state.game_time_ms,
+        let timers = self.load_game_tools(campaign_id)?;
+        let timekeeping = json!({"gmKnowledgeOnly":true,"gameTimeMs":timers.state.game_time_ms,
             "timers":timers.state.timers.iter().map(|t|json!({"label":t.label,"clock":t.clock,"mode":t.mode,"valueMs":crate::game_tools::timer_value(t,timers.server_now_ms),"running":t.running})).collect::<Vec<_>>(),
             "scope":"These clocks track time only. Spell duration, concentration, rests and other mechanical effects are adjudicated separately; a timer does not change a sheet."});
         let gm_context=tabletop.scene.as_ref().map(|s|json!({"gmKnowledgeOnly":true,"sceneId":s.id,
@@ -271,6 +271,15 @@ impl CampaignStore {
             .take(4)
             .collect::<Vec<_>>();
         let sources = self.list_knowledge_sources(campaign_id)?;
+        let calculations = self
+            .list_calculations(campaign_id, 0)?
+            .into_iter()
+            .take(5)
+            .collect::<Vec<_>>();
+        let recent_activity = event_rows(&conn, campaign_id, Some(8))?
+            .iter()
+            .map(|event| json!({"seq":event.seq,"kind":event.event_type,"at":event.created_at}))
+            .collect::<Vec<_>>();
         let scenes = self.list_tabletop_scenes(campaign_id)?;
         let rolls = self
             .load_dice_rolls(campaign_id)?
@@ -291,10 +300,10 @@ impl CampaignStore {
         Ok(DmContext {
             campaign_id: campaign_id.into(),
             state_seq: before,
-            state: json!({"campaign":campaign_name,"actingCharacterId":request.actor_id,"party":party,
-                "rules":rules,"timekeeping":timekeeping,"scene":scene,"gmContext":gm_context,"sceneCatalog":scenes,"recordedDiceRolls":rolls,
+            state: json!({"campaign":campaign_name,"actingCharacterId":request.actor_id,"party":party,"partyCount":characters.len(),
+                "rules":rules,"timekeeping":timekeeping,"scene":scene,"gmContext":gm_context,"sceneCatalog":scenes,"recordedDiceRolls":rolls,"calculationHistory":calculations,"recentActivity":recent_activity,"capturedAt":now(),
                 "referenceMatches":references,"knowledgeSources":sources.iter().take(24).collect::<Vec<_>>(),"knowledgeSourceCount":sources.len(),
-                "scope":"DM can inspect all saved table/character data, search local campaign sources/compendium/SRD, and request engine calculations through read tools. GM-only knowledge must not appear in narration until discovered. Mechanical changes remain manual. A die total alone does not establish success, failure, or a critical. Armor Class is a total, not an attack bonus."}),
+                "scope":"Initial context is a summary. Use inspect to retrieve complete saved details and paged catalogs. DM can inspect all saved table/character data, search local campaign sources/compendium/SRD, and request engine calculations through read tools. GM-only knowledge must not appear in narration until discovered. Mechanical changes remain manual. A die total alone does not establish success, failure, or a critical. Armor Class is a total, not an attack bonus."}),
             history: history.turns,
             total_turns: history.total_turns,
         })
