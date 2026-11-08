@@ -1,6 +1,6 @@
 # Windows beta installer
 
-Testers open `Dungeon-World-AI-0.2.1-beta.1-Windows-Setup.msi`, choose Install, then Finish. The MSI installs for the current Windows account, creates desktop and Start menu shortcuts, and opens the graphical local AI setup when selected. No Node, Rust, terminal, or developer folder is needed by a tester.
+Testers open `Dungeon-World-AI-0.2.2-beta.1-Windows-Setup.msi`, choose Install, then Finish. The MSI installs for the current Windows account, creates desktop and Start menu shortcuts, and opens the graphical local AI setup when selected. No Node, Rust, terminal, or developer folder is needed by a tester.
 
 The package includes the release app, complete current CEF Scrying Pane runtime, portable CPU llama.cpp engine, private Python distribution, and native runtime DLLs including OpenMP. Models are explicit, separate downloads. Narration uses the CPU in this beta; 16 GB RAM is recommended. Optional art setup selects CUDA 13 packages when a compatible NVIDIA driver is present, and CPU packages otherwise. CPU image generation can be slow.
 

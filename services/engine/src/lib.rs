@@ -23,16 +23,27 @@ mod history;
 pub use history::{HistoryEdit, HistoryEntry};
 mod knowledge;
 pub use knowledge::{KnowledgeImport, KnowledgeSource, ReferenceHit};
+mod document_reader;
+pub use document_reader::{
+    DocumentPassage, KnowledgeDocument, OriginalDocument, OriginalDocumentImport,
+};
+mod calculations;
+pub use calculations::{CalculationOperation, CalculationRecord, CalculationRequest};
 mod dm_tools;
 pub use dm_tools::DmReadRequest;
 mod assets;
-pub use assets::{GeneratedAsset, TokenAssetRequest, TokenSpec, TokenArtwork, ArtRecipe, token_svg_with_artwork};
+pub use assets::{
+    token_svg_with_artwork, ArtRecipe, GeneratedAsset, TokenArtwork, TokenAssetRequest, TokenSpec,
+};
 mod art_library;
 pub use art_library::{ArtEntry, ArtImport, ArtMetadata, ArtUpdate};
 mod game_tools;
-pub use game_tools::{GameTools, ToolMutation, TimerOperation, GameTimer, ToolsState, calculate_game_math, DamageQuery, DamageResult, calculate_damage};
+pub use game_tools::{
+    calculate_damage, calculate_game_math, DamageQuery, DamageResult, GameTimer, GameTools,
+    TimerOperation, ToolMutation, ToolsState,
+};
 mod scrying;
-pub use scrying::{ScryingBookmark, BookmarkRequest, validated_browser_url};
+pub use scrying::{validated_browser_url, BookmarkRequest, ScryingBookmark};
 
 mod compendium;
 pub use compendium::{
@@ -55,6 +66,7 @@ const MIGRATION_KNOWLEDGE: &str = include_str!("../migrations/008_knowledge.sql"
 const MIGRATION_ASSETS: &str = include_str!("../migrations/009_generated_assets.sql");
 const MIGRATION_ART: &str = include_str!("../migrations/010_art_library.sql");
 const MIGRATION_TOOLS: &str = include_str!("../migrations/011_game_tools.sql");
+const MIGRATION_DOCUMENTS: &str = include_str!("../migrations/012_document_reader.sql");
 const MIGRATION_RULES: &str = include_str!("../migrations/004_campaign_rules.sql");
 const MIGRATION_SCENE_LIBRARY: &str = include_str!("../migrations/003_scene_library.sql");
 const MIGRATION_TABLETOP: &str = include_str!("../migrations/002_tabletop.sql");
@@ -227,6 +239,7 @@ fn connect(path: &Path, create: bool) -> Result<Connection, EngineError> {
     conn.execute_batch(MIGRATION_ASSETS)?;
     conn.execute_batch(MIGRATION_ART)?;
     conn.execute_batch(MIGRATION_TOOLS)?;
+    conn.execute_batch(MIGRATION_DOCUMENTS)?;
     Ok(conn)
 }
 
@@ -592,7 +605,7 @@ fn validate_update(update: &CharacterUpdate) -> Result<(), EngineError> {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod art_library_tests;
 pub mod documents;
+#[cfg(test)]
+mod tests;

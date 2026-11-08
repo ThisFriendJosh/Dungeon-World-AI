@@ -139,6 +139,15 @@ impl CampaignStore {
         campaign_id: &str,
         request: KnowledgeImport,
     ) -> Result<Saved<KnowledgeSource>, EngineError> {
+        self.import_knowledge_with_original(campaign_id, request, None)
+    }
+    pub fn import_knowledge_with_original(
+        &self,
+        campaign_id: &str,
+        request: KnowledgeImport,
+        original: Option<OriginalDocumentImport>,
+    ) -> Result<Saved<KnowledgeSource>, EngineError> {
+        let original = original.map(document_reader::decode_original).transpose()?;
         let title = validate_name(&request.title, "Source title")?;
         if request.text.trim().is_empty()
             || request.text.len() > 8_000_000
@@ -193,6 +202,9 @@ impl CampaignStore {
                 ])?;
             }
         }
+        if let Some(original) = &original {
+            document_reader::save_original(&tx, &source.id, original)?;
+        }
         record_event(
             &tx,
             campaign_id,
@@ -244,7 +256,7 @@ impl CampaignStore {
             .map(|t| format!("\"{t}\""))
             .collect::<Vec<_>>()
             .join(" OR ");
-        let mut stmt=conn.prepare("SELECT reference_id,title,kind,book,edition,gm_only,source_ref,snippet(dm_reference_index,4,'','',' … ',40) FROM dm_reference_index WHERE dm_reference_index MATCH ?1 AND campaign_id=?2 AND (?3='' OR edition IN ('','unassigned','homebrew') OR edition=?3) ORDER BY bm25(dm_reference_index) LIMIT 6")?;
+        let mut stmt=conn.prepare("SELECT reference_id,title,kind,book,edition,gm_only,source_ref,snippet(dm_reference_index,4,'','',' … ',40) FROM dm_reference_index WHERE dm_reference_index MATCH ?1 AND campaign_id=?2 AND (kind='campaign' OR ?3='' OR edition IN ('','unassigned','homebrew') OR edition=?3) ORDER BY bm25(dm_reference_index) LIMIT 6")?;
         let rows = stmt.query_map(params![expression, campaign_id, edition], |r| {
             Ok(ReferenceHit {
                 id: r.get(0)?,
@@ -302,6 +314,19 @@ impl CampaignStore {
         Ok(hits)
     }
     pub fn read_dm_reference(&self, campaign_id: &str, id: &str) -> Result<Value, EngineError> {
+        self.read_dm_reference_page(campaign_id, id, 0)
+    }
+    pub fn read_dm_reference_page(
+        &self,
+        campaign_id: &str,
+        id: &str,
+        offset: u32,
+    ) -> Result<Value, EngineError> {
+        if offset > 100_000_000 {
+            return Err(EngineError::Invalid(
+                "Reference offset is too large.".into(),
+            ));
+        }
         // Locate first even for bundled references, to enforce campaign identity.
         let conn = connect(&self.locate(campaign_id)?, false)?;
         if let Some(page) = id
@@ -319,7 +344,7 @@ impl CampaignStore {
                 .find(|p| p["number"].as_u64() == Some(page))
             {
                 return Ok(
-                    json!({"id":id,"source":"SRD 5.2.1","page":page,"edition":"5e-2024","text":clip(p["text"].as_str().unwrap_or_default(),9000),"gmOnly":false}),
+                    json!({"id":id,"source":"SRD 5.2.1","page":page,"edition":"5e-2024","text":p["text"].as_str().unwrap_or_default().chars().skip(offset as usize).take(4000).collect::<String>(),"offset":offset,"nextOffset":(offset as usize+4000<p["text"].as_str().unwrap_or_default().chars().count()).then_some(offset+4000),"gmOnly":false}),
                 );
             }
         }
@@ -328,12 +353,13 @@ impl CampaignStore {
                 "Choose a reference ID returned by the search.".into(),
             ));
         }
-        let row:Option<(String,String,String,String,bool,String)>=conn.query_row("SELECT title,body,book,edition,gm_only,source_ref FROM dm_reference_index WHERE campaign_id=?1 AND reference_id=?2",params![campaign_id,id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional()?;
-        let (title, body, book, edition, gm_only, source_ref) = row
+        let row:Option<(String,String,String,String,bool,String,String)>=conn.query_row("SELECT title,body,book,edition,gm_only,source_ref,kind FROM dm_reference_index WHERE campaign_id=?1 AND reference_id=?2",params![campaign_id,id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).optional()?;
+        let (title, body, book, edition, gm_only, source_ref, kind) = row
             .ok_or_else(|| EngineError::Invalid("Reference not found in this campaign.".into()))?;
         let profile = self.load_rules_settings(campaign_id)?.config.profile;
         let active = edition_text(profile);
-        if !active.is_empty()
+        if kind != "campaign"
+            && !active.is_empty()
             && matches!(edition.as_str(), "5e-2014" | "5e-2024" | "AD&D-2e")
             && edition != active
         {
@@ -342,7 +368,7 @@ impl CampaignStore {
             ));
         }
         Ok(
-            json!({"id":id,"title":title,"text":clip(&body,9000),"book":book,"edition":edition,"gmOnly":gm_only,"sourceRef":source_ref,"truncated":body.chars().count()>9000}),
+            json!({"id":id,"title":title,"text":body.chars().skip(offset as usize).take(4000).collect::<String>(),"offset":offset,"nextOffset":(offset as usize+4000<body.chars().count()).then_some(offset+4000),"book":book,"edition":edition,"gmOnly":gm_only,"sourceRef":source_ref,"truncated":offset as usize+4000<body.chars().count(),"rulesWarning":"Source editions are reference metadata. Apply mechanics from the active rules profile; setting lore is not a rules override."}),
         )
     }
 }

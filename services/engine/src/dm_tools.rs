@@ -35,6 +35,28 @@ pub enum DmReadRequest {
         a: f64,
         b: f64,
     },
+    Inspect {
+        scope: String,
+        id: Option<String>,
+        section: String,
+        offset: u32,
+    },
+}
+
+fn detail_page(value: Value, offset: u32, gm_only: bool) -> Result<Value, EngineError> {
+    let encoded = value.to_string();
+    let length = encoded.chars().count();
+    if offset as usize > length {
+        return Err(EngineError::Invalid(
+            "Choose a detail offset within range.".into(),
+        ));
+    }
+    if length <= 4000 && offset == 0 {
+        return Ok(json!({"data":value,"nextOffset":null,"gmKnowledgeOnly":gm_only}));
+    }
+    Ok(
+        json!({"format":"JSON fragment; continue at nextOffset","text":encoded.chars().skip(offset as usize).take(4000).collect::<String>(),"offset":offset,"totalCharacters":length,"nextOffset":(offset as usize+4000<length).then_some(offset+4000),"gmKnowledgeOnly":gm_only}),
+    )
 }
 
 pub(crate) fn board_snapshot(board: &SceneBoard) -> Value {
@@ -86,6 +108,144 @@ impl CampaignStore {
             ));
         }
         let result = match request {
+            DmReadRequest::Inspect {
+                scope,
+                id,
+                section,
+                offset,
+            } => {
+                if offset > 100_000_000 {
+                    return Err(EngineError::Invalid("Detail offset is too large.".into()));
+                }
+                match scope.as_str() {
+                    "reference" => self.read_dm_reference_page(
+                        campaign_id,
+                        &id.ok_or_else(|| {
+                            EngineError::Invalid("Choose a reference ID returned by search.".into())
+                        })?,
+                        offset,
+                    )?,
+                    "document" => {
+                        let id = id.ok_or_else(|| {
+                            EngineError::Invalid(
+                                "Choose a source ID from the document catalog.".into(),
+                            )
+                        })?;
+                        let doc = self.read_knowledge_document(campaign_id, &id, offset)?;
+                        json!({"source":doc.source,"original":doc.original,"passage":doc.passages.first(),"offsetUnit":"passage","nextOffset":(offset+1<doc.source.chunk_count as u32).then_some(offset+1),"imageUnderstanding":"Indexed text is available. The narrator does not interpret the original illustrations."})
+                    }
+                    "catalog" => {
+                        let entries=match section.as_str(){"documents"=>serde_json::to_value(self.list_knowledge_sources(campaign_id)?),"scenes"=>serde_json::to_value(self.list_tabletop_scenes(campaign_id)?),"characters"=>Ok(json!(self.load_characters(campaign_id)?.iter().map(|c|json!({"id":c.id,"name":c.name,"class":c.class_name,"level":c.level})).collect::<Vec<_>>())),"art"=>serde_json::to_value(self.list_art(campaign_id)?),"images"=>serde_json::to_value(self.list_scene_images(campaign_id)?),_=>return Err(EngineError::Invalid("Choose documents, scenes, characters, art, or images.".into()))}.map_err(|e|EngineError::Invalid(e.to_string()))?;
+                        let entries = entries.as_array().unwrap();
+                        json!({"entries":entries.iter().skip(offset as usize).take(10).collect::<Vec<_>>(),"total":entries.len(),"offset":offset,"offsetUnit":"entry","nextOffset":(offset as usize+10<entries.len()).then_some(offset+10),"gmKnowledgeOnly":true})
+                    }
+                    "character" => {
+                        let character = self
+                            .load_characters(campaign_id)?
+                            .into_iter()
+                            .find(|c| Some(&c.id) == id.as_ref())
+                            .ok_or_else(|| {
+                                EngineError::Invalid("Character not found in this campaign.".into())
+                            })?;
+                        let value = match section.as_str() {
+                            "stats" => serde_json::from_str(&character.stats_json),
+                            "inventory" => serde_json::from_str(&character.inventory_json),
+                            "conditions" => serde_json::from_str(&character.conditions_json),
+                            "notes" => serde_json::from_str(&character.progression_json),
+                            "all" => serde_json::to_value(character),
+                            _ => {
+                                return Err(EngineError::Invalid(
+                                    "Choose stats, inventory, conditions, notes, or all.".into(),
+                                ))
+                            }
+                        }
+                        .map_err(|e| EngineError::Invalid(e.to_string()))?;
+                        detail_page(value, offset, false)?
+                    }
+                    "scene" => {
+                        let scene = if let Some(id) = id {
+                            let raw:String=conn.query_row("SELECT scene_json FROM tabletop_scenes WHERE campaign_id=?1 AND scene_id=?2",params![campaign_id,id],|r|r.get(0)).optional()?.ok_or_else(||EngineError::Invalid("Scene not found in this campaign.".into()))?;
+                            serde_json::from_str::<FariScene>(&raw)
+                                .map_err(|e| EngineError::Invalid(e.to_string()))?
+                        } else {
+                            self.load_tabletop(campaign_id)?
+                                .scene
+                                .ok_or_else(|| EngineError::Invalid("No saved scene.".into()))?
+                        };
+                        let value = serde_json::to_value(scene)
+                            .map_err(|e| EngineError::Invalid(e.to_string()))?;
+                        let selected = match section.as_str() {
+                            "all" => value,
+                            "notes" => value["notes"].clone(),
+                            "cards" => value["indexCards"].clone(),
+                            "cardCatalog"=>json!(["public","private"].iter().flat_map(|visibility|value["indexCards"][*visibility].as_array().into_iter().flatten().map(move |card|json!({"id":card["id"],"title":card["title"],"gmOnly":*visibility=="private"}))).collect::<Vec<_>>()),
+                            _ if section.starts_with("card:")=>["public","private"].iter().flat_map(|visibility|value["indexCards"][*visibility].as_array().into_iter().flatten()).find(|card|card["id"].as_str()==section.strip_prefix("card:")).cloned().ok_or_else(||EngineError::Invalid("Card not found in this scene.".into()))?,
+                            _ if section.starts_with("token:")=>value["board"]["tokens"].as_array().into_iter().flatten().find(|token|token["id"].as_str()==section.strip_prefix("token:")).cloned().ok_or_else(||EngineError::Invalid("Token not found in this scene.".into()))?,
+                            "board" => value["board"].clone(),
+                            "drawings" => value["board"]["drawings"].clone(),
+                            "fog" => value["board"]["fog"].clone(),
+                            _ => {
+                                return Err(EngineError::Invalid(
+                                    "Choose all, notes, cards, board, drawings, or fog.".into(),
+                                ))
+                            }
+                        };
+                        detail_page(selected, offset, true)?
+                    }
+                    "progress" => match section.as_str() {
+                        "calculations" => {
+                            let records = self.list_calculations(campaign_id, offset)?;
+                            let next = (records.len() == 20).then_some(offset + 20);
+                            json!({"entries":records,"offset":offset,"offsetUnit":"entry","nextOffset":next,"previewOnly":true})
+                        }
+                        "rolls" => {
+                            let rolls = self.load_dice_rolls(campaign_id)?;
+                            json!({"entries":rolls.iter().skip(offset as usize).take(10).collect::<Vec<_>>(),"offset":offset,"offsetUnit":"entry","nextOffset":(offset as usize+10<rolls.len()).then_some(offset+10)})
+                        }
+                        "timers" => detail_page(
+                            serde_json::to_value(self.load_game_tools(campaign_id)?)
+                                .map_err(|e| EngineError::Invalid(e.to_string()))?,
+                            offset,
+                            true,
+                        )?,
+                        "activity" => {
+                            if let Some(id) = id {
+                                let seq = id.parse::<i64>().map_err(|_| {
+                                    EngineError::Invalid(
+                                        "Choose an activity sequence from the saved list.".into(),
+                                    )
+                                })?;
+                                let payload:Option<String>=conn.query_row("SELECT payload_json FROM events e WHERE e.campaign_id=?1 AND e.seq=?2 AND NOT EXISTS(SELECT 1 FROM event_visibility v WHERE v.campaign_id=e.campaign_id AND v.event_seq=e.seq AND v.removed=1)",params![campaign_id,seq],|r|r.get(0)).optional()?;
+                                detail_page(
+                                    serde_json::from_str(&payload.ok_or_else(|| {
+                                        EngineError::Invalid(
+                                            "Activity not found in this campaign.".into(),
+                                        )
+                                    })?)
+                                    .map_err(|e| EngineError::Invalid(e.to_string()))?,
+                                    offset,
+                                    true,
+                                )?
+                            } else {
+                                let mut statement=conn.prepare("SELECT seq,event_type,created_at FROM events e WHERE e.campaign_id=?1 AND NOT EXISTS(SELECT 1 FROM event_visibility v WHERE v.campaign_id=e.campaign_id AND v.event_seq=e.seq AND v.removed=1) ORDER BY e.seq DESC LIMIT 11 OFFSET ?2")?;
+                                let events=statement.query_map(params![campaign_id,offset],|r|Ok(json!({"id":r.get::<_,i64>(0)?.to_string(),"kind":r.get::<_,String>(1)?,"at":r.get::<_,String>(2)?})))?.collect::<Result<Vec<_>,_>>()?;
+                                json!({"entries":events.iter().take(10).collect::<Vec<_>>(),"offsetUnit":"entry","nextOffset":(events.len()>10).then_some(offset+10),"gmKnowledgeOnly":true,"hint":"Use an entry id with activity to read its full saved payload."})
+                            }
+                        }
+                        _ => {
+                            return Err(EngineError::Invalid(
+                                "Choose calculations, rolls, timers, or activity.".into(),
+                            ))
+                        }
+                    },
+                    _ => {
+                        return Err(EngineError::Invalid(
+                            "Choose document, catalog, character, scene, or progress inspection."
+                                .into(),
+                        ))
+                    }
+                }
+            }
             DmReadRequest::Search { query } => {
                 json!({"matches":self.search_dm_references(campaign_id,&query)?,"hint":"Use reference with a returned id for a larger passage. Edition labels and GM-only flags are authoritative metadata."})
             }

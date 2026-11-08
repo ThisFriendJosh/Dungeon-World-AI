@@ -1,4 +1,5 @@
 import {invoke} from "@tauri-apps/api/core";
+import type {CalculationRecord} from "./calculation-records";
 import type {Saved} from "./types";
 import {escapeHtml as e} from "./html";
 
@@ -8,7 +9,7 @@ export type RulesState={config:RulesConfig;revision:number;updatedAt:string;sour
 type RulesQuery={abilityScore:number;level:number;damage:number;exhaustion:number;speed:number};
 type Calculation={profile:RulesProfile;abilityModifier:number;proficiencyBonus:number;trainedBonus:number;spellSaveDc:number;concentrationDc:number|null;exhaustionTestPenalty:number|null;speedAfterExhaustion:number|null;exhaustionState:string};
 type Book={version:string;license:string;sourceUrl:string;toc:{title:string;page:number}[];pages:{number:number;text:string}[]};
-type Context={campaignId:string;action(work:()=>Promise<void>):void;render():void;isActive():boolean;onDirty():void;onError(message:string):void;onSaved(warning:string|null):Promise<void>};
+type Context={campaignId:string;action(work:()=>Promise<void>):void;render():void;isActive():boolean;onDirty():void;onError(message:string):void;onSaved(warning:string|null,message?:string):Promise<void>};
 export const profileLabel=(profile:RulesProfile)=>({"5e-manual":"Manual / choose edition","5e-2014":"5e · 2014 rules","5e-2024":"5.5e · revised 2024 rules"})[profile];
 const signed=(n:number)=>n>=0?"+"+n:String(n);
 
@@ -54,7 +55,7 @@ export class RulesPanel {
      <p class="hint">These preferences are recorded for your table. Combat automation does not apply them yet.</p>
      <button type="submit" class="primary">Save rules profile</button>
     </form>
-    <form id="rulesCalculator" class="rules-card"><h3>Rules calculator</h3><p class="hint">Uses the saved campaign profile. Base values assume proficiency and exclude temporary bonuses.</p>
+    <form id="rulesCalculator" class="rules-card"><h3>Rules calculator</h3><p class="hint">Saves the result for the Dungeon Master using the current campaign profile. Base values assume proficiency and exclude temporary bonuses.</p>
      <div class="rules-inputs">${[["abilityScore","Ability score",1,30],["level","Character level",1,20],["damage","Damage taken (one source)",0,10000],["exhaustion","Exhaustion level",0,6],["speed","Base speed (ft)",0,1000]].map(([key,label,min,max])=>`<label>${label}<input data-rules-number="${key}" type="number" required min="${min}" max="${max}" step="1" value="${this.query[key as keyof RulesQuery]}"></label>`).join("")}</div>
      <button type="submit">Calculate</button>
      ${this.dirty?'<p class="hint">Save your pending profile selection before calculating with it.</p>':""}
@@ -99,7 +100,7 @@ export class RulesPanel {
    this.load(result.value);await context.onSaved(result.warning);
   });});
   root.querySelector<HTMLFormElement>("#rulesCalculator")?.addEventListener("submit",event=>{event.preventDefault();for(const input of root.querySelectorAll<HTMLInputElement>("[data-rules-number]"))this.query[input.dataset.rulesNumber as keyof RulesQuery]=Number(input.value);
-   void context.action(async()=>{this.result=await invoke<Calculation>("calculate_rules",{campaignId:context.campaignId,query:this.query});context.render();});
+   void context.action(async()=>{const saved=await invoke<Saved<CalculationRecord>>("calculate_campaign",{campaignId:context.campaignId,request:{characterId:null,operation:{kind:"rules",query:this.query}}});await context.onSaved(saved.warning,"Calculation saved for the Dungeon Master.");this.result=saved.value.result as Calculation;context.render();});
   });
   for(const input of root.querySelectorAll<HTMLInputElement>("[data-rules-number]"))input.addEventListener("input",()=>{this.query[input.dataset.rulesNumber as keyof RulesQuery]=Number(input.value);this.result=null;root.querySelector(".rules-results")?.remove();});
   const search=root.querySelector<HTMLInputElement>("#rulesSearch");

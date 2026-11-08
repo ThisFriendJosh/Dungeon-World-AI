@@ -30,6 +30,8 @@ import "./workspace-tools.css";
 import {GameToolsPanel,clockText} from "./game-tools";
 import type {GameTools} from "./game-tools";
 import "./game-tools.css";
+import "./document-reader.css";
+import type {CalculationRecord} from "./calculation-records";
 import {WORKSPACE_TABS} from "./workspace-tabs";
 import type {WorkspaceView} from "./workspace-tabs";
 import {ScryingPane} from "./scrying-pane";
@@ -104,7 +106,7 @@ async function action(work: () => Promise<void>) {
 }
 
 async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
-  const [characters, events, campaigns, board, rolls, scenes, images, rulesState, dmHistory, dmStatus, knowledgeSources, generatedAssets, artEntries, artStatus,toolState,bookmarks] = await Promise.all([
+  const [characters, events, campaigns, board, rolls, scenes, images, rulesState, dmHistory, dmStatus, knowledgeSources, generatedAssets, artEntries, artStatus,toolState,bookmarks,calculations] = await Promise.all([
     invoke<CharacterSummary[]>("load_characters", { campaignId: campaign.id }),
     invoke<CampaignEvent[]>("recent_events", { campaignId: campaign.id }),
     invoke<CampaignSummary[]>("list_campaigns"),
@@ -120,7 +122,8 @@ async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
     invoke<ArtEntry[]>("list_art",{campaignId:campaign.id}),
     invoke<ArtRuntimeStatus>("art_runtime_status").catch(()=>null),
     invoke<GameTools>("load_game_tools",{campaignId:campaign.id}),
-    invoke<ScryingBookmark[]>("list_scrying_bookmarks",{campaignId:campaign.id})
+    invoke<ScryingBookmark[]>("list_scrying_bookmarks",{campaignId:campaign.id}),
+    invoke<CalculationRecord[]>("list_calculations",{campaignId:campaign.id,offset:0})
   ]);
   state.campaign = campaigns.find(c => c.id === campaign.id) ?? campaign;
   state.campaigns = campaigns;
@@ -134,7 +137,7 @@ async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
   knowledge.load(campaign.id,knowledgeSources);
   assetWorkshop.load(campaign.id,generatedAssets,artStatus);
   artLibrary.load(campaign.id,artEntries);
-  gameTools.load(campaign.id,toolState,rulesState);
+  gameTools.load(campaign.id,toolState,rulesState,calculations);
   scryingPane.load(campaign.id,bookmarks);
   historyPanel.load(campaign.id);
   if (!characters.some(c => c.id === state.selectedId)) state.selectedId = characters[0]?.id ?? null;
@@ -247,7 +250,7 @@ function render() {
     state.view = button.dataset.workspaceView as typeof state.view;
     render();
   }));
-  if(state.campaign&&state.view==="tools"){const campaign=state.campaign;gameTools.bind(root,{campaignId:campaign.id,render,action,onSaved:warning=>afterSave(campaign,"Game clocks saved.",warning),onError:message=>status(message,"error")},state.characters);}
+  if(state.campaign&&state.view==="tools"){const campaign=state.campaign;gameTools.bind(root,{campaignId:campaign.id,render,action,onSaved:(warning,message)=>afterSave(campaign,message??"Game clocks saved.",warning,true),onError:message=>status(message,"error")},state.characters);}
   if(state.campaign&&state.view==="scrying"){const campaign=state.campaign;scryingPane.bind(root,{campaignId:campaign.id,render,action,isBusy:()=>state.busy,onSaved:warning=>afterSave(campaign,"Browser bookmarks saved.",warning)});}
   root.querySelectorAll<HTMLButtonElement>("[data-compendium-section]").forEach(button=>button.addEventListener("click",()=>{
     if(state.busy)return;state.compendiumSection=button.dataset.compendiumSection as CompendiumSection;render();
@@ -255,7 +258,7 @@ function render() {
   if(state.campaign){const campaign=state.campaign;historyPanel.bind(root,{campaignId:campaign.id,expectedSeq:state.latestEventSeq,render,action,
     isBusy:()=>{if(state.busy||dm.pending||assetWorkshop.pending)return true;if(state.dirty||tabletop.dirty||rules.dirty||knowledge.dirty||artLibrary.dirty||assetWorkshop.dirty){status("Save or discard current edits before editing history.","warning");return true;}return false;},
     onSaved:(warning,message)=>afterSave(campaign,message,warning),onError:message=>status(message,"error")});}
-  if(state.campaign&&state.view==="compendium"&&state.compendiumSection==="documents"){const campaign=state.campaign;knowledge.bind(root,{campaignId:campaign.id,render,action,onDirty:()=>status("Unsaved source text.","warning"),onMessage:message=>status(message),onSaved:warning=>{compendium.invalidate();return afterSave(campaign,"Sources saved in Compendium and indexed for the Dungeon Master.",warning);}});}
+  if(state.campaign&&state.view==="compendium"&&state.compendiumSection==="documents"){const campaign=state.campaign;knowledge.bind(root,{campaignId:campaign.id,render,action,onDirty:()=>status("Unsaved source text.","warning"),onMessage:message=>status(message),onSaved:(warning,message)=>{compendium.invalidate();return afterSave(campaign,message??"Sources saved in Compendium and indexed for the Dungeon Master.",warning,true);}});}
   if (state.campaign && state.view === "dm") {
     const campaign = state.campaign;
     dm.bind(root, {campaignId:campaign.id,render,onSaved:warning=>afterSave(campaign,"Dungeon Master turn saved.",warning)});
@@ -280,7 +283,7 @@ function render() {
   }
   if(state.campaign&&state.view==="rules"){
     const campaign=state.campaign;
-    rules.bind(root,{campaignId:campaign.id,action,render,isActive:()=>state.view==="rules",onDirty:()=>status("Unsaved rules profile.","warning"),onError:message=>status(message,"error"),onSaved:warning=>afterSave(campaign,"Rules profile saved.",warning)});
+    rules.bind(root,{campaignId:campaign.id,action,render,isActive:()=>state.view==="rules",onDirty:()=>status("Unsaved rules profile.","warning"),onError:message=>status(message,"error"),onSaved:(warning,message)=>afterSave(campaign,message??"Rules profile saved.",warning,true)});
   }
   if(state.campaign&&state.view==="art"){
     const campaign=state.campaign;
@@ -363,6 +366,8 @@ function eventLabel(event: CampaignEvent): string {
   if (event.eventType === "content.imported") return "Reference collection imported: " + event.payload.name;
   if (event.eventType === "dm.turn.saved") return "Dungeon Master turn saved";
   if (event.eventType === "knowledge.imported") return "DM source imported: "+event.payload.title;
+  if (event.eventType === "knowledge.original_saved") return "Original document attached: "+event.payload.name;
+  if (event.eventType === "calculation.recorded") return "Calculation saved: "+event.payload.kind+" (preview)";
   if (event.eventType === "asset.created") return "Visual asset created: "+event.payload.name;
   if (event.eventType === "tools.changed") {const operation=event.payload.operation as {kind?:string}|undefined;if(operation?.kind==="setTime"||operation?.kind==="subtractTime"){const before=typeof event.payload.previousGameTimeMs==="number"?event.payload.previousGameTimeMs:0;const after=typeof event.payload.gameTimeMs==="number"?event.payload.gameTimeMs:0;return "Game time corrected: "+clockText(before)+" → "+clockText(after);}return "Game clock / timer updated";}
   if (event.eventType === "scrying.bookmark.saved") return "Browser bookmark saved: "+event.payload.title;

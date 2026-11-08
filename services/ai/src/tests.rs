@@ -506,3 +506,30 @@ fn malformed_reply_keeps_a_local_diagnostic_without_logging_context_headers_or_r
         "original failure"
     );
 }
+
+#[test]
+fn inspect_request_roundtrips_and_schema_exposes_saved_workspace_continuations() {
+    let content=json!({"schemaVersion":1,"narration":"","choices":[],"requests":[{"kind":"inspect","scope":"scene","id":null,"section":"card:00000000-0000-0000-0000-000000000001","offset":4000}]}).to_string();
+    let reply = decode_completion(
+        json!({"choices":[{"finish_reason":"stop","message":{"content":content}}]}),
+    )
+    .unwrap();
+    assert!(
+        matches!(&reply.requests[0],DmReadRequest::Inspect{scope,section,offset:4000,..} if scope=="scene"&&section.starts_with("card:"))
+    );
+    let schema = proposal_schema(true);
+    let variants = schema["oneOf"][1]["properties"]["requests"]["items"]["oneOf"]
+        .as_array()
+        .unwrap();
+    let inspect = variants
+        .iter()
+        .find(|tool| tool["properties"]["kind"]["const"] == "inspect")
+        .unwrap();
+    assert!(inspect["properties"]["scope"]["enum"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("reference")));
+    assert_eq!(inspect["properties"]["section"]["maxLength"], 80);
+    assert!(CONTRACT.contains("PREVIEWS"));
+    assert!(CONTRACT.contains("cannot visually interpret"));
+}
