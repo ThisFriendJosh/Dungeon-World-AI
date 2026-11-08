@@ -1,0 +1,17 @@
+Property	Value
+s72	L0
+Property	Property
+ARPHELPLINK	https://github.com/ThisFriendJosh/Dungeon-World-AI/issues
+ARPNOMODIFY	1
+ARPURLINFOABOUT	https://github.com/ThisFriendJosh/Dungeon-World-AI
+CREATE_DESKTOP	1
+DefaultUIFont	Body
+INSTALLLEVEL	1
+LAUNCH_AI	1
+Manufacturer	Dungeon World AI
+ProductCode	{C5A652D8-ED70-5F88-B7E3-98BB5F3B304E}
+ProductLanguage	1033
+ProductName	Dungeon World AI Beta
+ProductVersion	0.2.0
+SecureCustomProperties	OLDPRODUCTS;DWA_NO_LAUNCH
+UpgradeCode	{725F73BA-BD25-58E7-A6E3-667C88AC70A5}

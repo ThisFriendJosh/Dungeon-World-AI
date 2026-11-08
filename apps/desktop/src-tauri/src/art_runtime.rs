@@ -89,7 +89,7 @@ impl ArtRuntime {
         let ready = self.python.is_file()
             && required.iter().all(|p| self.model.join(p).is_file())
             && marker.as_ref().and_then(|v| v["revision"].as_str()) == Some(REVISION);
-        ArtStatus{available:ready,detail:if ready{"Local image model ready. The first generation also loads its weights."}else{"One-time setup needed: open Setup-Local-Art.cmd in the Dungeon-World-AI folder, then restart the app. Uploads work now."}.into(),model:"SD-Turbo · local".into()}
+        ArtStatus{available:ready,detail:if ready{"Local image model ready. The first generation also loads its weights."}else{"Choose Set up local AI in the sidebar to add image generation, then reopen the app. Uploaded artwork works now."}.into(),model:"SD-Turbo · local".into()}
     }
     fn start(&self) -> Result<Session, String> {
         fs::create_dir_all(&self.logs).map_err(|e| e.to_string())?;
@@ -284,7 +284,7 @@ mod tests {
                 |_| {}
             )
             .unwrap_err()
-            .contains("Setup-Local-Art"));
+            .contains("Set up local AI"));
         assert!(!runtime.busy.load(Ordering::SeqCst));
         assert!(runtime.child.lock().unwrap().is_none());
     }

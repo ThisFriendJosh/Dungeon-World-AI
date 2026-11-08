@@ -109,10 +109,10 @@ impl RuntimeConfig {
 
     fn validate(&self) -> Result<(), String> {
         if !self.executable.is_file() {
-            return Err("The local DM runtime is missing. Configure LOCAL_LLM_SERVER_PATH to an existing llama-server executable. The tabletop and saves are still available.".into());
+            return Err("The local Dungeon Master engine is missing. Run the beta installer again to repair the app. Your campaigns stay saved.".into());
         }
         if !self.model.is_file() || self.model.extension().is_none_or(|e| e != "gguf") {
-            return Err("The local DM model is missing. Configure LOCAL_LLM_MODEL_PATH to an existing GGUF model. No download was started.".into());
+            return Err("The local Dungeon Master needs its one-time model download. Choose Set up local AI, then reopen the app when setup finishes.".into());
         }
         if !self.gpu_layers.parse::<u32>().is_ok_and(|n| n <= 999) {
             return Err(

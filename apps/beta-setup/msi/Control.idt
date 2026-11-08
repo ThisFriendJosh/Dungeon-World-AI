@@ -1,0 +1,23 @@
+Dialog_	Control	Type	X	Y	Width	Height	Attributes	Property	Text	Control_Next	Help
+s72	s50	s20	i2	i2	i2	i2	I4	S50	L0	S50	L50
+Control	Dialog_	Control
+ErrorDlg	Body	Text	20	90	330	100	3		Windows Installer could not finish. Close Dungeon World AI if it is open, check free disk space, and run this installer again. Your saved campaigns stay on your PC.		
+ErrorDlg	Finish	PushButton	285	243	70	18	3		Finish		
+ErrorDlg	Title	Text	20	25	330	40	3		{\Heading}One step needs attention		
+FinishDlg	Body	Text	20	90	330	100	3		Open Dungeon World AI Beta from your desktop or Start menu. If you selected local AI setup, Finish opens the download assistant. Your saved adventures are kept when you uninstall or upgrade.		
+FinishDlg	Finish	PushButton	285	243	70	18	3		Finish		
+FinishDlg	Title	Text	20	25	330	40	3		{\Heading}Your table is installed		
+ProgressDlg	Action	Text	20	100	330	40	3		Installing the app and browser...		
+ProgressDlg	Cancel	PushButton	300	243	55	18	3		Cancel		
+ProgressDlg	Progress	ProgressBar	20	158	330	14	3		1		
+ProgressDlg	Title	Text	20	25	330	35	3		{\Heading}Setting up your table		
+UserExitDlg	Body	Text	20	90	330	100	3		The installation was cancelled. You can open the installer again when you are ready. Your saved adventures have not been removed.		
+UserExitDlg	Finish	PushButton	285	243	70	18	3		Finish		
+UserExitDlg	Title	Text	20	25	330	40	3		{\Heading}Setup stopped safely		
+WelcomeDlg	AI	CheckBox	20	178	330	18	3	LAUNCH_AI	Open local AI setup when installation finishes	Install	
+WelcomeDlg	Body	Text	20	65	330	72	3		Install Dungeon World AI Beta for your Windows account. Includes the app, Scrying Pane browser, 3D dice, timers, and campaign tools. Your saved adventures stay on this device.		
+WelcomeDlg	Cancel	PushButton	300	243	55	18	3		Cancel	Desktop	
+WelcomeDlg	Desktop	CheckBox	20	150	330	18	3	CREATE_DESKTOP	Create a desktop shortcut	AI	
+WelcomeDlg	Install	PushButton	225	243	65	18	3		Install	Cancel	
+WelcomeDlg	Note	Text	20	209	330	22	3		AI downloads need internet once. No AI account or subscription is needed.		
+WelcomeDlg	Title	Text	20	22	330	30	3		{\Heading}Welcome to your next adventure		

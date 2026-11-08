@@ -1,0 +1,37 @@
+Dungeon World AI - Beta
+Your world. Your table.
+
+1. Open Dungeon-World-AI-0.2.0-beta.1-Windows-Setup.msi and choose Install.
+2. Choose Finish to open local AI setup. Leave Local AI Dungeon Master selected.
+3. Choose Set up AI. When downloads finish, choose Finish to open the app.
+
+An internet connection is needed for the initial AI downloads and for websites
+you choose to open in Scrying Pane. Your Dungeon Master and generated artwork
+run on your PC after setup. No AI account, subscription, or API key is needed.
+
+AI image generation is optional and can be added later. Use Set up local AI
+inside the app or in the Windows Start menu. NVIDIA graphics are used when
+supported; CPU image generation can be slow. Narration uses the CPU in this beta.
+
+Create a campaign, add a character, and explore the tabs. Changes save locally.
+The first Dungeon Master reply or image can take longer while its model loads.
+
+If a download stops, choose Retry. If you skip AI, campaign tools, maps, imported
+artwork, dice, timers, and the browser remain available.
+
+Uninstall from Windows Settings > Apps > Dungeon World AI Beta. Your saved
+campaigns, imported artwork, and downloaded models are kept for reinstalling.
+
+Beta saves: %LOCALAPPDATA%\DungeonWorldAI\Beta\saved-games
+Setup log: %LOCALAPPDATA%\DungeonWorldAI\Beta\setup.log
+
+This beta installer is unsigned. Use the copy provided directly by the project.
+If Windows blocks it, contact the beta organizer; do not disable your security
+settings. Production distribution needs a signed installer.
+
+Project, source code, known issues, and feedback:
+https://github.com/ThisFriendJosh/Dungeon-World-AI
+
+When reporting an issue, include what you clicked, what happened, and what you
+expected. Screenshots and a Windows/GPU description are helpful. Share only
+campaign information you want the project to see.

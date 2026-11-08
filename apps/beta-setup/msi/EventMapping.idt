@@ -1,0 +1,5 @@
+Dialog_	Control_	Event	Attribute
+s72	s50	s50	s50
+EventMapping	Dialog_	Control_	Event
+ProgressDlg	Action	ActionText	Text
+ProgressDlg	Progress	SetProgress	Progress

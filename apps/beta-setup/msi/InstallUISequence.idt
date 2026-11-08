@@ -1,0 +1,14 @@
+Action	Condition	Sequence
+s72	S255	I2
+InstallUISequence	Action
+CostFinalize		1000
+CostInitialize		800
+ErrorDlg		-3
+ExecuteAction		1300
+FileCost		900
+FindRelatedProducts		25
+FinishDlg	NOT REMOVE	-1
+LaunchConditions		100
+ProgressDlg	NOT REMOVE	1290
+UserExitDlg		-2
+WelcomeDlg	NOT REMOVE	1230

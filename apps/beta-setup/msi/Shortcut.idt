@@ -1,0 +1,6 @@
+Shortcut	Directory_	Name	Component_	Target	Arguments	Description	Hotkey	Icon_	IconIndex	ShowCmd	WkDir
+s72	s72	l128	s72	s255	S255	L255	I2	S72	I2	I2	S72
+Shortcut	Shortcut
+Desktop	DesktopFolder	DWAIBETA|Dungeon World AI Beta	DesktopLink	[INSTALLDIR]DungeonWorldAI.exe	/play	Your world. Your table.		DwaIcon	0	1	INSTALLDIR
+Play	DwaMenu	DWAIBETA|Dungeon World AI Beta	AppLinks	[INSTALLDIR]DungeonWorldAI.exe	/play	Your world. Your table.		DwaIcon	0	1	INSTALLDIR
+Setup	DwaMenu	SETUPAI|Set up local AI	AppLinks	[INSTALLDIR]DungeonWorldAI.exe	/configure	Your world. Your table.		DwaIcon	0	1	INSTALLDIR

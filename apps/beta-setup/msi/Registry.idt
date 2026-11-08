@@ -1,0 +1,5 @@
+Registry	Root	Key	Name	Value	Component_
+s72	i2	l255	L255	L0	s72
+Registry	Registry
+AppLinksReg	1	Software\DungeonWorldAI\Beta	AppLinks	#1	AppLinks
+DesktopLinkReg	1	Software\DungeonWorldAI\Beta	DesktopLink	#1	DesktopLink

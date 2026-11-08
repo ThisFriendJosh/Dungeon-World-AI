@@ -17,6 +17,25 @@ use dwa_local_dm::{LocalDm, RuntimeConfig, RuntimeStatus, PROMPT_VERSION};
 use tauri::{Manager, State};
 
 #[tauri::command]
+fn open_beta_setup() -> Result<(), String> {
+    let setup = std::env::var_os("DWA_BETA_SETUP")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file() && path.file_name().is_some_and(|n| n == "DungeonWorldAI.exe"))
+        .ok_or("Open the beta installer to add local AI. Development builds can use the setup commands in the project folder.")?;
+    let mut command = std::process::Command::new(setup);
+    command.arg("/configure");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    command
+        .spawn()
+        .map_err(|e| format!("Could not open AI setup: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
 fn load_game_tools(
     store: State<'_, CampaignStore>,
     campaign_id: String,
@@ -587,6 +606,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            open_beta_setup,
             load_game_tools,
             change_game_tools,
             calculate_game_math,

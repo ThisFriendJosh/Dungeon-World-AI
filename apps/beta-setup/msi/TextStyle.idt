@@ -1,0 +1,5 @@
+TextStyle	FaceName	Size	Color	StyleBits
+s72	s32	i2	I4	I2
+TextStyle	TextStyle
+Body	Segoe UI	10		0
+Heading	Segoe UI	17		1

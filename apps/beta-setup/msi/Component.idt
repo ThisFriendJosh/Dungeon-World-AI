@@ -1,0 +1,5 @@
+Component	ComponentId	Directory_	Attributes	Condition	KeyPath
+s72	S38	s72	i2	S255	S72
+Component	Component
+AppLinks	{681FF165-3036-9FCA-4E61-DCBF9C678A71}	INSTALLDIR	260		AppLinksReg
+DesktopLink	{69AE8916-6233-3BB0-F88F-8C6296AF0320}	INSTALLDIR	260	CREATE_DESKTOP = 1	DesktopLinkReg

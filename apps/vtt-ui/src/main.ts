@@ -217,6 +217,7 @@ function render() {
         <form id="campaignForm"><fieldset><legend>Begin an adventure</legend>
           <label>Campaign name<input id="campaignName" required maxlength="120" placeholder="e.g. Aerathis"></label>
           <button class="primary" type="submit">Create campaign</button></fieldset></form>
+        ${isTauri()?'<div class="beta-setup-link"><button type="button" id="betaSetup">Set up local AI</button><p class="subtle">Add or repair the Dungeon Master and AI art. Reopen the app after setup.</p></div>':""}
       </aside>
       <section class="campaign-workspace" aria-label="Current campaign">
         ${state.campaign ? `
@@ -237,6 +238,9 @@ function render() {
       </section>
     </div>`;
 
+  root.querySelector("#betaSetup")?.addEventListener("click",()=>{
+    void invoke("open_beta_setup").catch(error=>status(String(error),"error"));
+  });
   root.querySelectorAll<HTMLButtonElement>("[data-workspace-view]").forEach(button => button.addEventListener("click", () => {
     if (state.busy || button.dataset.workspaceView === state.view || !allowNavigation()) return;
     tabletop.discard(); rules.discard(); knowledge.discard(); state.dirty = false; state.message = "";
