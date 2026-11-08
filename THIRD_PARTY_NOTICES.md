@@ -38,3 +38,7 @@ Bundled files: apps/vtt-ui/public/rules/srd-5.2.1.pdf, srd-5.2.1.json, attributi
 ## Local compendium imports
 
 The application includes an adapter for the dnd-data JSON format; no dnd-data dataset or package source is bundled. Imported entries retain their publisher and source-book metadata in local campaign storage.
+
+## Optional local image model
+
+The application can load Stability AI's SD-Turbo through an existing Python/diffusers environment. Model weights are downloaded separately by explicit setup and are not bundled in this repository or native build. The pinned model's README and LICENSE.md are retained in its model folder. Model terms: https://huggingface.co/stabilityai/sd-turbo/blob/main/LICENSE.md. Model card: https://huggingface.co/stabilityai/sd-turbo. These terms are separate from the application license and supplied campaign artwork.

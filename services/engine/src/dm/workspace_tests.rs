@@ -467,6 +467,7 @@ fn generated_asset_persists_png_svg_and_recipe_atomically_with_xml_escaping() {
             TokenAssetRequest {
                 spec: spec(),
                 png_data_url: png_header(),
+                artwork: None,
             },
         )
         .unwrap()
@@ -495,7 +496,8 @@ fn generated_asset_persists_png_svg_and_recipe_atomically_with_xml_escaping() {
             &campaign.id,
             TokenAssetRequest {
                 spec: spec(),
-                png_data_url: png_header()
+                png_data_url: png_header(),
+                artwork: None,
             }
         )
         .is_err());
