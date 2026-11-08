@@ -27,6 +27,15 @@ import {HistoryPanel} from "./history-panel";
 import {AssetWorkshop} from "./asset-workshop";
 import type {GeneratedAsset,ArtRuntimeStatus} from "./asset-workshop";
 import "./workspace-tools.css";
+import {GameToolsPanel} from "./game-tools";
+import type {GameTools} from "./game-tools";
+import "./game-tools.css";
+import {WORKSPACE_TABS} from "./workspace-tabs";
+import type {WorkspaceView} from "./workspace-tabs";
+import {ScryingPane} from "./scrying-pane";
+import type {ScryingBookmark} from "./scrying-pane";
+import "./scrying-pane.css";
+import "./dice-animation.css";
 import {installClipboard} from "./clipboard";
 import {compendiumWorkspace} from "./compendium-workspace";
 import type {CompendiumSection} from "./compendium-workspace";
@@ -39,6 +48,8 @@ const tabletop = new SceneEditor();
 const rules = new RulesPanel();
 const compendium = new Compendium();
 const artLibrary = new ArtLibrary();
+const gameTools=new GameToolsPanel();
+const scryingPane=new ScryingPane();
 
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("Missing app root");
@@ -54,7 +65,7 @@ const state = {
   selectedId: null as string | null,
   busy: false,
   dirty: false,
-  view: "character" as "character" | "tabletop" | "dice" | "art" | "rules" | "compendium" | "dm",
+  view: "character" as WorkspaceView,
   compendiumSection:"documents" as CompendiumSection,
   message: "",
   messageKind: "info"
@@ -93,7 +104,7 @@ async function action(work: () => Promise<void>) {
 }
 
 async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
-  const [characters, events, campaigns, board, rolls, scenes, images, rulesState, dmHistory, dmStatus, knowledgeSources, generatedAssets, artEntries, artStatus] = await Promise.all([
+  const [characters, events, campaigns, board, rolls, scenes, images, rulesState, dmHistory, dmStatus, knowledgeSources, generatedAssets, artEntries, artStatus,toolState,bookmarks] = await Promise.all([
     invoke<CharacterSummary[]>("load_characters", { campaignId: campaign.id }),
     invoke<CampaignEvent[]>("recent_events", { campaignId: campaign.id }),
     invoke<CampaignSummary[]>("list_campaigns"),
@@ -107,7 +118,9 @@ async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
     invoke<KnowledgeSource[]>("list_knowledge_sources",{campaignId:campaign.id}),
     invoke<GeneratedAsset[]>("list_generated_assets",{campaignId:campaign.id}),
     invoke<ArtEntry[]>("list_art",{campaignId:campaign.id}),
-    invoke<ArtRuntimeStatus>("art_runtime_status").catch(()=>null)
+    invoke<ArtRuntimeStatus>("art_runtime_status").catch(()=>null),
+    invoke<GameTools>("load_game_tools",{campaignId:campaign.id}),
+    invoke<ScryingBookmark[]>("list_scrying_bookmarks",{campaignId:campaign.id})
   ]);
   state.campaign = campaigns.find(c => c.id === campaign.id) ?? campaign;
   state.campaigns = campaigns;
@@ -121,6 +134,8 @@ async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
   knowledge.load(campaign.id,knowledgeSources);
   assetWorkshop.load(campaign.id,generatedAssets,artStatus);
   artLibrary.load(campaign.id,artEntries);
+  gameTools.load(campaign.id,toolState,rulesState);
+  scryingPane.load(campaign.id,bookmarks);
   historyPanel.load(campaign.id);
   if (!characters.some(c => c.id === state.selectedId)) state.selectedId = characters[0]?.id ?? null;
   state.dirty = false;
@@ -181,6 +196,9 @@ function sheet(character: CharacterSummary): string {
 }
 
 function render() {
+  gameTools.detach();
+  dice.detach();
+  if(state.view==="scrying")scryingPane.detach();else scryingPane.hide();
   root.classList.toggle("tabletop-active",state.view==="tabletop");
   root.classList.toggle("tabletop-focus",state.view==="tabletop"&&tabletop.focused);
   if(state.campaign)compendium.selectCampaign(state.campaign.id);
@@ -204,8 +222,8 @@ function render() {
         ${state.campaign ? `
           <div class="campaign-heading"><p class="eyebrow">Campaign workspace · ${escape(rules.label())}</p><h2>${escape(state.campaign.name)}</h2>
             <p class="subtle">${state.characters.length} character${state.characters.length === 1 ? "" : "s"} · Campaign and character changes are saved locally.</p></div>
-          <div class="workspace-tabs" aria-label="Campaign views"><button data-workspace-view="dm" aria-pressed="${state.view === "dm"}">Dungeon Master</button><button data-workspace-view="character" aria-pressed="${state.view === "character"}">Characters</button><button data-workspace-view="tabletop" aria-pressed="${state.view === "tabletop"}">Tabletop</button><button data-workspace-view="dice" aria-pressed="${state.view === "dice"}">Dice</button><button data-workspace-view="art" aria-pressed="${state.view === "art"}">Art & codex</button><button data-workspace-view="rules" aria-pressed="${state.view === "rules"}">Rules</button><button data-workspace-view="compendium" aria-pressed="${state.view === "compendium"}">Compendium</button></div>
-          ${state.view === "dm" ? dm.html(state.characters) : state.view === "tabletop" ? tabletop.html(state.characters,dice.html(state.characters)) : state.view === "dice" ? dice.html(state.characters) : state.view === "art" ? assetWorkshop.html()+artLibrary.html() : state.view === "rules" ? rules.html() : state.view === "compendium" ? compendiumWorkspace(state.compendiumSection,knowledge.html(),compendium.html()) : `
+          <div class="workspace-tabs" aria-label="Campaign views">${WORKSPACE_TABS.map(([view,label])=>`<button data-workspace-view="${view}" aria-pressed="${state.view===view}">${escape(label)}</button>`).join("")}</div>
+          ${state.view === "tools" ? gameTools.html(state.characters) : state.view === "scrying" ? scryingPane.html() : state.view === "dm" ? dm.html(state.characters) : state.view === "tabletop" ? tabletop.html(state.characters,dice.html(state.characters)) : state.view === "dice" ? dice.html(state.characters) : state.view === "art" ? assetWorkshop.html()+artLibrary.html() : state.view === "rules" ? rules.html() : state.view === "compendium" ? compendiumWorkspace(state.compendiumSection,knowledge.html(),compendium.html()) : `
           <div class="party-tabs" aria-label="Characters">${state.characters.map(c => `
             <button class="${c.id === state.selectedId ? "active" : ""}" data-character="${escape(c.id)}" aria-pressed="${c.id === state.selectedId}">${escape(c.name)}<span>Level ${c.level} ${escape(c.className)}</span></button>`).join("")}</div>
           <section class="sheet-panel">${character ? sheet(character) : '<div class="empty-state"><p class="eyebrow">The party begins here</p><h2>Add your first character</h2><p>Create a character below, then fill in their sheet.</p></div>'}</section>
@@ -225,6 +243,8 @@ function render() {
     state.view = button.dataset.workspaceView as typeof state.view;
     render();
   }));
+  if(state.campaign&&state.view==="tools"){const campaign=state.campaign;gameTools.bind(root,{campaignId:campaign.id,render,action,onSaved:warning=>afterSave(campaign,"Game clocks saved.",warning),onError:message=>status(message,"error")},state.characters);}
+  if(state.campaign&&state.view==="scrying"){const campaign=state.campaign;scryingPane.bind(root,{campaignId:campaign.id,render,action,isBusy:()=>state.busy,onSaved:warning=>afterSave(campaign,"Browser bookmarks saved.",warning)});}
   root.querySelectorAll<HTMLButtonElement>("[data-compendium-section]").forEach(button=>button.addEventListener("click",()=>{
     if(state.busy)return;state.compendiumSection=button.dataset.compendiumSection as CompendiumSection;render();
   }));
@@ -246,7 +266,7 @@ function render() {
 
   if (state.campaign && (state.view === "dice" || state.view === "tabletop")) {
     const campaign = state.campaign;
-    dice.bind(root, { campaignId: campaign.id, action, isBusy: () => state.busy,
+    dice.bind(root, { campaignId: campaign.id, action,render, isBusy: () => state.busy,
       onSaved: (roll, warning) => afterSave(campaign, "Roll saved: " + describeRoll(roll), warning,true) });
   }
 
@@ -340,6 +360,9 @@ function eventLabel(event: CampaignEvent): string {
   if (event.eventType === "dm.turn.saved") return "Dungeon Master turn saved";
   if (event.eventType === "knowledge.imported") return "DM source imported: "+event.payload.title;
   if (event.eventType === "asset.created") return "Visual asset created: "+event.payload.name;
+  if (event.eventType === "tools.changed") return "Game clock / timer updated";
+  if (event.eventType === "scrying.bookmark.saved") return "Browser bookmark saved: "+event.payload.title;
+  if (event.eventType === "scrying.bookmark.removed") return "Browser bookmark removed";
   if (event.eventType === "history.entry.removed") return "History entry removed";
   if (event.eventType === "history.entry.restored") return "History entry restored";
   if (event.eventType === "rules.changed") return "Campaign rules profile changed";

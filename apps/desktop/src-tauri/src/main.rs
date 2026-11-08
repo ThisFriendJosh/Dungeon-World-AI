@@ -4,6 +4,7 @@ use std::path::PathBuf;
 mod art_runtime;
 mod clipboard;
 mod reference_documents;
+mod scrying;
 
 use dwa_engine::{
     CampaignEvent, CampaignStore, CampaignSummary, CharacterSummary, CharacterUpdate, FariScene,
@@ -14,6 +15,112 @@ use dwa_engine::{DmHistory, DmTurn, DmTurnRequest};
 use dwa_engine::{RulesCalculation, RulesConfig, RulesQuery, RulesState};
 use dwa_local_dm::{LocalDm, RuntimeConfig, RuntimeStatus, PROMPT_VERSION};
 use tauri::{Manager, State};
+
+#[tauri::command]
+fn load_game_tools(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<dwa_engine::GameTools, String> {
+    store
+        .load_game_tools(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn change_game_tools(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::ToolMutation,
+) -> Result<Saved<dwa_engine::GameTools>, String> {
+    store
+        .change_game_tools(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn calculate_game_math(expression: String) -> Result<f64, String> {
+    dwa_engine::calculate_game_math(&expression).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn calculate_damage(query: dwa_engine::DamageQuery) -> Result<dwa_engine::DamageResult, String> {
+    dwa_engine::calculate_damage(query).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn cef_browser_status(
+    runtime: State<'_, scrying::ScryingRuntime>,
+) -> Result<scrying::ScryingStatus, String> {
+    runtime.status()
+}
+#[tauri::command]
+async fn cef_browser_open(
+    app: tauri::AppHandle,
+    url: String,
+    bounds: scrying::PaneBounds,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    let parent = app
+        .get_webview_window("main")
+        .ok_or("Main window unavailable.")?
+        .hwnd()
+        .map_err(|e| e.to_string())?
+        .0 as isize;
+    #[cfg(not(windows))]
+    let parent = 0isize;
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<scrying::ScryingRuntime>()
+            .open(parent, &url, bounds)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+fn cef_browser_layout(
+    runtime: State<'_, scrying::ScryingRuntime>,
+    bounds: scrying::PaneBounds,
+) -> Result<(), String> {
+    runtime.layout(bounds)
+}
+#[tauri::command]
+fn cef_browser_command(
+    runtime: State<'_, scrying::ScryingRuntime>,
+    kind: String,
+) -> Result<(), String> {
+    runtime.command(&kind)
+}
+#[tauri::command]
+async fn cef_browser_close(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<scrying::ScryingRuntime>().shutdown())
+        .await
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn list_scrying_bookmarks(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<dwa_engine::ScryingBookmark>, String> {
+    store
+        .list_scrying_bookmarks(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn save_scrying_bookmark(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::BookmarkRequest,
+) -> Result<Saved<dwa_engine::ScryingBookmark>, String> {
+    store
+        .save_scrying_bookmark(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn remove_scrying_bookmark(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+    confirmed: bool,
+) -> Result<Saved<()>, String> {
+    store
+        .remove_scrying_bookmark(&campaign_id, &id, confirmed)
+        .map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 fn list_knowledge_sources(
@@ -473,9 +580,25 @@ fn main() {
                 data_dir.join("logs"),
             )));
             app.manage(art_runtime::ArtRuntime::discover(data_dir.join("logs")));
+            app.manage(scrying::ScryingRuntime::new(
+                app.path().resource_dir()?,
+                data_dir,
+            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            load_game_tools,
+            change_game_tools,
+            calculate_game_math,
+            calculate_damage,
+            cef_browser_status,
+            cef_browser_open,
+            cef_browser_layout,
+            cef_browser_command,
+            cef_browser_close,
+            list_scrying_bookmarks,
+            save_scrying_bookmark,
+            remove_scrying_bookmark,
             clipboard::read_clipboard_text,
             clipboard::write_clipboard_text,
             reference_documents::prepare_reference_document,
@@ -531,6 +654,7 @@ fn main() {
             if matches!(event, tauri::RunEvent::Exit) {
                 app.state::<LocalDm>().shutdown();
                 app.state::<art_runtime::ArtRuntime>().shutdown();
+                app.state::<scrying::ScryingRuntime>().shutdown();
             }
         });
 }

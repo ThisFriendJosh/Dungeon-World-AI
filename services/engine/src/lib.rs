@@ -29,6 +29,10 @@ mod assets;
 pub use assets::{GeneratedAsset, TokenAssetRequest, TokenSpec, TokenArtwork, ArtRecipe, token_svg_with_artwork};
 mod art_library;
 pub use art_library::{ArtEntry, ArtImport, ArtMetadata, ArtUpdate};
+mod game_tools;
+pub use game_tools::{GameTools, ToolMutation, TimerOperation, GameTimer, ToolsState, calculate_game_math, DamageQuery, DamageResult, calculate_damage};
+mod scrying;
+pub use scrying::{ScryingBookmark, BookmarkRequest, validated_browser_url};
 
 mod compendium;
 pub use compendium::{
@@ -50,6 +54,7 @@ const MIGRATION_HISTORY: &str = include_str!("../migrations/007_history_visibili
 const MIGRATION_KNOWLEDGE: &str = include_str!("../migrations/008_knowledge.sql");
 const MIGRATION_ASSETS: &str = include_str!("../migrations/009_generated_assets.sql");
 const MIGRATION_ART: &str = include_str!("../migrations/010_art_library.sql");
+const MIGRATION_TOOLS: &str = include_str!("../migrations/011_game_tools.sql");
 const MIGRATION_RULES: &str = include_str!("../migrations/004_campaign_rules.sql");
 const MIGRATION_SCENE_LIBRARY: &str = include_str!("../migrations/003_scene_library.sql");
 const MIGRATION_TABLETOP: &str = include_str!("../migrations/002_tabletop.sql");
@@ -221,6 +226,7 @@ fn connect(path: &Path, create: bool) -> Result<Connection, EngineError> {
     conn.execute_batch(MIGRATION_KNOWLEDGE)?;
     conn.execute_batch(MIGRATION_ASSETS)?;
     conn.execute_batch(MIGRATION_ART)?;
+    conn.execute_batch(MIGRATION_TOOLS)?;
     Ok(conn)
 }
 

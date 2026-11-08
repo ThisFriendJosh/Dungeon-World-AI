@@ -258,6 +258,10 @@ impl CampaignStore {
             "publicCards":s.index_cards.public.iter().take(8).map(|c| json!({"title":c.title,
                 "text":c.blocks.first().map(|b|short(&b.value,512)).unwrap_or_default()})).collect::<Vec<_>>() }));
         let rules = self.load_rules_settings(campaign_id)?;
+        let timers=self.load_game_tools(campaign_id)?;
+        let timekeeping=json!({"gmKnowledgeOnly":true,"gameTimeMs":timers.state.game_time_ms,
+            "timers":timers.state.timers.iter().map(|t|json!({"label":t.label,"clock":t.clock,"mode":t.mode,"valueMs":crate::game_tools::timer_value(t,timers.server_now_ms),"running":t.running})).collect::<Vec<_>>(),
+            "scope":"These clocks track time only. Spell duration, concentration, rests and other mechanical effects are adjudicated separately; a timer does not change a sheet."});
         let gm_context=tabletop.scene.as_ref().map(|s|json!({"gmKnowledgeOnly":true,"sceneId":s.id,
             "sceneNotes":short(&s.notes,1800),"privateCards":s.index_cards.private.iter().take(12).map(|c|json!({"id":c.id,"title":c.title,"text":c.blocks.first().map(|b|short(&b.value,700)).unwrap_or_default()})).collect::<Vec<_>>(),
             "board":s.board.as_ref().map(dm_tools::board_snapshot)}));
@@ -288,7 +292,7 @@ impl CampaignStore {
             campaign_id: campaign_id.into(),
             state_seq: before,
             state: json!({"campaign":campaign_name,"actingCharacterId":request.actor_id,"party":party,
-                "rules":rules,"scene":scene,"gmContext":gm_context,"sceneCatalog":scenes,"recordedDiceRolls":rolls,
+                "rules":rules,"timekeeping":timekeeping,"scene":scene,"gmContext":gm_context,"sceneCatalog":scenes,"recordedDiceRolls":rolls,
                 "referenceMatches":references,"knowledgeSources":sources.iter().take(24).collect::<Vec<_>>(),"knowledgeSourceCount":sources.len(),
                 "scope":"DM can inspect all saved table/character data, search local campaign sources/compendium/SRD, and request engine calculations through read tools. GM-only knowledge must not appear in narration until discovered. Mechanical changes remain manual. A die total alone does not establish success, failure, or a critical. Armor Class is a total, not an attack bonus."}),
             history: history.turns,
