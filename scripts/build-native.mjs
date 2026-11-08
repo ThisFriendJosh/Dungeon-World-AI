@@ -3,7 +3,9 @@ import {homedir} from "node:os";
 import {join,dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 import {spawnSync} from "node:child_process";
+import {readNativeSettings,updatedNativeSettings} from "./native-launch-settings.mjs";
 const root=join(dirname(fileURLToPath(import.meta.url)),"..");
+const previousSettings=readNativeSettings(root);
 if(process.platform!=="win32")throw Error("This native development launcher currently targets Windows.");
 const env={...process.env,CARGO_INCREMENTAL:"0"};env.CARGO_TARGET_DIR||=join(root,"build","cargo-target");
 const ui=spawnSync(env.ComSpec||"cmd.exe",["/d","/s","/c","npm.cmd run build:ui"],{cwd:root,env,stdio:"inherit",windowsHide:true});
@@ -21,5 +23,5 @@ catch(error){
   copyFileSync(compiled,join(output,appFile));
   console.log("The running app is still open. The updated build is staged for the next launcher start.");
 }
-writeFileSync(join(output,"launch-settings.json"),JSON.stringify({dataDir:env.DWA_DATA_DIR||null,appFile},null,2)+"\n","utf8");
+writeFileSync(join(output,"launch-settings.json"),JSON.stringify(updatedNativeSettings(previousSettings,env,appFile),null,2)+"\n","utf8");
 console.log("Native app prepared. Open Start-Dungeon-World-AI.cmd from File Explorer.");
