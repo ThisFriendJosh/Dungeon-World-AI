@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test:adapters": "tsc -p tsconfig.adapters.json && node --test ../../tests/scene-adapter.test.cjs ../../tests/dice-format.test.cjs ../../tests/board-model.test.cjs ../../tests/tabletop-render.test.cjs ../../tests/art-rules.test.cjs"
+    "test:adapters": "tsc -p tsconfig.adapters.json && node ../../scripts/ui-tests.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0"

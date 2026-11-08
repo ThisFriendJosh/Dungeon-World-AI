@@ -16,6 +16,18 @@ use uuid::Uuid;
 mod dice;
 pub use dice::{DiceMode, DiceRequest, DiceRoll, DiceTerm};
 
+mod dm;
+pub use dm::{DmContext, DmHistory, DmProposal, DmTurn, DmTurnRequest};
+
+mod history;
+pub use history::{HistoryEdit, HistoryEntry};
+mod knowledge;
+pub use knowledge::{KnowledgeImport, KnowledgeSource, ReferenceHit};
+mod dm_tools;
+pub use dm_tools::DmReadRequest;
+mod assets;
+pub use assets::{GeneratedAsset, TokenAssetRequest, TokenSpec};
+
 mod compendium;
 pub use compendium::{
     ContentDetail, ContentEntry, ContentImport, ContentPack, ContentQuery, ContentResults,
@@ -31,6 +43,10 @@ mod tabletop;
 pub use tabletop::{FariScene, SceneCard, SceneCards, SceneTextBlock, TabletopState};
 
 const MIGRATION_COMPENDIUM: &str = include_str!("../migrations/005_compendium.sql");
+const MIGRATION_DM: &str = include_str!("../migrations/006_dm_turns.sql");
+const MIGRATION_HISTORY: &str = include_str!("../migrations/007_history_visibility.sql");
+const MIGRATION_KNOWLEDGE: &str = include_str!("../migrations/008_knowledge.sql");
+const MIGRATION_ASSETS: &str = include_str!("../migrations/009_generated_assets.sql");
 const MIGRATION_RULES: &str = include_str!("../migrations/004_campaign_rules.sql");
 const MIGRATION_SCENE_LIBRARY: &str = include_str!("../migrations/003_scene_library.sql");
 const MIGRATION_TABLETOP: &str = include_str!("../migrations/002_tabletop.sql");
@@ -197,6 +213,10 @@ fn connect(path: &Path, create: bool) -> Result<Connection, EngineError> {
     conn.execute_batch(MIGRATION_SCENE_LIBRARY)?;
     conn.execute_batch(MIGRATION_RULES)?;
     conn.execute_batch(MIGRATION_COMPENDIUM)?;
+    conn.execute_batch(MIGRATION_DM)?;
+    conn.execute_batch(MIGRATION_HISTORY)?;
+    conn.execute_batch(MIGRATION_KNOWLEDGE)?;
+    conn.execute_batch(MIGRATION_ASSETS)?;
     Ok(conn)
 }
 
@@ -224,7 +244,7 @@ fn event_rows(
     limit: Option<i64>,
 ) -> Result<Vec<CampaignEvent>, EngineError> {
     let mut stmt = conn.prepare(
-        "SELECT seq, event_type, payload_json, created_at FROM events WHERE campaign_id = ?1 ORDER BY seq DESC LIMIT ?2"
+        "SELECT seq, event_type, payload_json, created_at FROM events e WHERE campaign_id = ?1 AND (?2=-1 OR NOT EXISTS(SELECT 1 FROM event_visibility v WHERE v.campaign_id=e.campaign_id AND v.event_seq=e.seq AND v.removed=1)) ORDER BY seq DESC LIMIT ?2"
     )?;
     let rows = stmt.query_map(params![campaign_id, limit.unwrap_or(-1)], |row| {
         Ok((

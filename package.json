@@ -9,10 +9,13 @@
   ],
   "scripts": {
     "dev": "node scripts/desktop.mjs dev",
+    "dev:dm": "node scripts/dm-dev.mjs",
     "build": "node scripts/desktop.mjs build",
     "build:ui": "npm run build --workspace @dwa/vtt-ui",
     "check": "npm run typecheck --workspace @dwa/vtt-ui && npm run policy:offline",
     "test:engine": "cargo test --manifest-path services/engine/Cargo.toml",
+    "test:ai": "cargo test --manifest-path services/ai/Cargo.toml",
+    "test:dm-ui": "node --test tests/dm-panel.test.cjs",
     "check:rust": "cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml",
     "policy:offline": "node scripts/offline_policy_check.mjs",
     "test:ui": "npm run test:adapters --workspace @dwa/vtt-ui"

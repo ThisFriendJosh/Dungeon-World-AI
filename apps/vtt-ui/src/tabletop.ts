@@ -8,6 +8,7 @@ import type {SceneBoard,BoardToken,TokenKind,Point,Drawing,SceneSummary,SceneIma
 import {getArt,MAP_ART,SCENE_ART,PORTRAIT_ART,artThumbnail} from "./bundled-art";
 import {renderBoard} from "./board-render";
 import {prepareImage} from "./image-import";
+import {newId} from "./uuid";
 
 type Tool="select"|"pan"|"pen"|"rectangle"|"ellipse"|"reveal"|"conceal";
 type Context={
@@ -48,6 +49,7 @@ export class SceneEditor {
  private source(id:string):string|null{return getArt(id)?.path??this.sources.get(id)??null;}
  useBundledBackground(id:string){const asset=getArt(id);if(!asset||!["battlemap","scene"].includes(asset.role))return false;this.checkpoint();this.board.background=id;this.board.backgroundFit="contain";this.board.backgroundScale=1;this.board.backgroundX=0;this.board.backgroundY=0;this.board.grid=asset.role==="battlemap"&&!asset.gridPrinted;if(!this.board.tokens.length&&!this.board.drawings.length&&!this.board.fog.length){resizeBoard(this.board,asset.suggestedColumns??30,asset.suggestedRows??Math.round(30*asset.height/asset.width));this.fitPending=true;}this.lastMove="";this.preview=false;this.dirty=true;return true;}
  addBundledToken(id:string){const asset=getArt(id);if(!asset||asset.role!=="portrait"||this.board.tokens.length>=100)return false;this.checkpoint();const token=makeToken(asset.kindHint??"npc",this.board.tokens.length+1);token.name=asset.title.slice(0,120);token.sprite=id;token.x=Math.min(2+this.board.tokens.length%6,this.board.columns-1);token.y=Math.min(2+Math.floor(this.board.tokens.length/6),this.board.rows-1);this.board.tokens.push(token);this.selectedId=token.id;this.preview=false;this.dirty=true;return true;}
+ addSavedToken(id:string,name:string){if(!this.images.some(image=>image.id===id)||this.board.tokens.length>=100)return false;this.checkpoint();const token=makeToken("npc",this.board.tokens.length+1);token.name=name.slice(0,120);token.sprite=id;this.board.tokens.push(token);this.selectedId=token.id;this.preview=false;this.dirty=true;return true;}
  html(characters:CharacterSummary[]=[],diceHtml=""):string{
    const b=this.board,t=this.selected;
    const selectedArt=getArt(b.background);
@@ -175,7 +177,7 @@ export class SceneEditor {
    root.querySelector("#placeCharacter")?.addEventListener("change",()=>{const character=context.characters.find(c=>c.id===input("placeCharacter").value);if(character)add("player",character);});
    for(const button of root.querySelectorAll<HTMLButtonElement>("[data-select-token]"))button.addEventListener("click",()=>{if(context.isBusy())return;read();this.selectedId=button.dataset.selectToken!;this.tool="select";rerender();});
    click("#removeToken",()=>mutate(()=>{this.board.tokens=this.board.tokens.filter(t=>t.id!==this.selectedId);this.selectedId=null;}));
-   click("#duplicateToken",()=>mutate(()=>{const original=this.selected;if(!original||this.board.tokens.length>=100)return;const copy=structuredClone(original);copy.id=crypto.randomUUID();copy.name=(copy.name+" copy").slice(0,120);Object.assign(copy,positionToken(this.board,copy,copy.x+1,copy.y+1));this.board.tokens.push(copy);this.selectedId=copy.id;}));
+   click("#duplicateToken",()=>mutate(()=>{const original=this.selected;if(!original||this.board.tokens.length>=100)return;const copy=structuredClone(original);copy.id=newId();copy.name=(copy.name+" copy").slice(0,120);Object.assign(copy,positionToken(this.board,copy,copy.x+1,copy.y+1));this.board.tokens.push(copy);this.selectedId=copy.id;}));
    for(const field of root.querySelectorAll<HTMLInputElement>("[data-token-field]"))field.addEventListener("change",()=>{read();if(field.dataset.tokenField==="size"||field.dataset.tokenField==="locked"){rerender();return;}paint();void this.loadImages(context,paint);});
    click("#focusTable",()=>{this.focused=!this.focused;this.fitPending=true;rerender();});
    const importImage=(selector:string,sprite:boolean)=>root.querySelector<HTMLInputElement>(selector)?.addEventListener("change",event=>{
@@ -196,7 +198,7 @@ export class SceneEditor {
    let gesture:Gesture|null=null;
    const point=(event:PointerEvent):Point=>{const svg=root.querySelector<SVGSVGElement>("#battleSvg")!;const matrix=svg.getScreenCTM();if(!matrix)return{x:0,y:0};const p=svg.createSVGPoint();p.x=event.clientX;p.y=event.clientY;const world=p.matrixTransform(matrix.inverse());return{x:clamp(world.x,0,this.board.columns),y:clamp(world.y,0,this.board.rows)};};
    const fog=(p:Point)=>{if(this.board.fog.length>=500){context.onError("Fog brush limit reached. Undo a stroke or use Cover all to reset the mask.");return;}
-     this.board.fogEnabled=true;this.board.fog.push({id:crypto.randomUUID(),...p,radius:this.brush,reveal:this.tool==="reveal"});mark();
+     this.board.fogEnabled=true;this.board.fog.push({id:newId(),...p,radius:this.brush,reveal:this.tool==="reveal"});mark();
    };
    viewport.addEventListener("pointerdown",event=>{
      if(event.button!==0||context.isBusy())return;
@@ -209,7 +211,7 @@ export class SceneEditor {
      }else{this.checkpoint();gesture={start:p};
        if(this.tool==="reveal"||this.tool==="conceal"){fog(p);gesture.lastFog=p;paint();}
        else if(this.board.drawings.length>=200){context.onError("A scene supports up to 200 drawings.");gesture=null;return;}
-       else gesture.drawing={id:crypto.randomUUID(),kind:this.tool as Drawing["kind"],points:[p,p],color:this.drawColor,width:this.drawWidth};
+   else gesture.drawing={id:newId(),kind:this.tool as Drawing["kind"],points:[p,p],color:this.drawColor,width:this.drawWidth};
      }
      viewport.setPointerCapture(event.pointerId);event.preventDefault();
    });

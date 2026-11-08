@@ -9,6 +9,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 dwa-engine = { path = "../../../services/engine" }
+dwa-local-dm = { path = "../../../services/ai" }
+serde_json = "1"
 
 [features]
 default = []
