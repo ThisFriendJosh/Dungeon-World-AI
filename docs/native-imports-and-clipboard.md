@@ -8,6 +8,8 @@ Build the embedded UI and Windows executable with `npm.cmd run build:native`, th
 
 The build respects `CARGO_TARGET_DIR`. Its native output is copied to the ignored `build/native` folder. An explicit `DWA_DATA_DIR` at build time is retained in that folder's local `launch-settings.json`, so an isolated test campaign can be reopened from the launcher. Otherwise the app uses its normal app-data folder. `node scripts/native-dm.mjs --data <folder>` provides an explicit session override.
 
+If Windows locks the executable because the app is open, the build stages a versioned executable and records its basename in the local launch settings. Close the old app and use the same launcher to open the update. The launcher accepts only the expected application basename pattern from those settings; explicit `DWA_NATIVE_APP_PATH` remains an environment override.
+
 ## Clipboard
 
 Windows text fields use native plain-text clipboard commands for Ctrl+C, Ctrl+X and Ctrl+V. The Dungeon Master action box and pasted-source form also offer Paste buttons. Reads occur only after an explicit paste gesture; there is no clipboard polling. Paste replaces the current selection, retains surrounding text, updates the draft, and respects the field's length limit. Password fields retain the platform's normal behavior. Clipboard access failures are displayed instead of silently dropping text. Other platforms retain their native shortcuts; explicit Paste buttons use the browser Clipboard API.
@@ -28,6 +30,16 @@ Choose files, review/edit their extracted text and source metadata, then select 
 
 Engine tests cover Word archive extraction and invalid inputs alongside existing search, edition, isolation and persistence tests. Frontend tests exercise generic files, source-pack metadata/notices, safe HTML conversion, partial-import retry, document review, clipboard selection/length handling and the Compendium sections. Native tests render/read an actual PDF fixture with Windows OCR and exercise the PDF text-filter/OCR route. A successful extraction test is separate from an end-to-end GUI file import or a real local-model reply.
 
-November 8 verification: 61 engine tests, 6 AI unit tests, 34 frontend tests, and 2 Windows PDF tests passed (103 total). The separate local-TCP integration test remains opt-in and blocked by the restricted runner. Type checking, the offline source check and the embedded Windows build passed.
+Before the v0.4 follow-up below, November 8 verification recorded 61 engine tests, 6 AI unit tests, 34 frontend tests and 2 Windows PDF tests passed (103 total). The separate local-TCP integration test remains opt-in and blocked by the restricted runner. Type checking, the offline source check and the embedded Windows build passed.
 
 In the rebuilt native UI, an isolated Mournwell source was saved, indexed and returned in Compendium search. The native clipboard copy command returned Windows Access Denied (error 5); the file chooser did not remain open in this restricted session. Thus host clipboard/file-picker behavior is not certified by those checks. Full live-model qualification still requires the normal-host launcher test, followed by continuity, agency, secret handling, arithmetic/read-tool and installer checks.
+
+## Lookup recovery and continuity (v0.4)
+
+A subsequent normal-host user screenshot confirms two saved local replies and the seven campaign-source imports. It also exposed a real response-protocol issue: the model sometimes drafted narration while requesting a lookup, and the controller rejected the entire turn.
+
+The controller now discards that intermediate prose/choices, performs the validated reads and asks for the completed reply. Only the completed reply can reach the existing save transaction. The response schema offers mutually exclusive final-reply and read-request forms, and permits no further reads after the three-round budget. Limits and rejection of unsupported/write requests remain in effect.
+
+Saved player/DM turns are now sent as alternating chat roles, with the current state and new action in the final user message. This distinguishes the latest action from previous opening narration; it is not a guarantee of model-quality continuity.
+
+Four new regression tests pass: mixed-draft recovery with real engine arithmetic and save/reopen, disjoint response forms, bounded/excessive reads and conversation ordering/trimmed history. The AI suite has 10 passing tests plus the opt-in socket test; with the unchanged prior engine/frontend/PDF results, the recorded total is 107 passing tests. The new controller tests use scripted model responses, not a claim of a new real-model playthrough.

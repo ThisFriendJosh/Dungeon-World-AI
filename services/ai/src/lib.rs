@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub const PROMPT_VERSION: &str = "dm-narrator-v0.3-tools";
+pub const PROMPT_VERSION: &str = "dm-narrator-v0.4-tools";
 const CONTEXT_TOKENS: usize = 8192;
 const OUTPUT_TOKENS: usize = 1024;
 const RESPONSE_LIMIT: u64 = 1_000_000;
@@ -66,6 +66,10 @@ To request reads instead of replying, set narration to "", choices to [], and re
 1 or 2 read-tool objects with a kind field (search/reference/scene/character/distance/arithmetic).
 After the app supplies results, return narration and no requests, or use another permitted
 read round. The app supplies readsRemaining. At zero, finish or ask the smallest clarification.
+Lookups happen before the player-facing reply. Any words or choices drafted alongside
+a lookup are discarded; only a completed reply after the reads can be saved.
+Continue from the latest player action and the last established story beat. Do not replay
+an earlier opening scene. If a player's wording is unclear, ask a focused clarification.
 Narration: 1–3 useful paragraphs, at most 6000 characters, ending at a player decision.
 Choices: 0–4 short optional first-person actions (maximum 240 characters each).
 No code fences, reasoning, think tags, extra fields, invented sources, or mechanical operations.
@@ -383,7 +387,10 @@ impl LocalDm {
                 Err(error) => {
                     if startup_error_is_fatal(&error) {
                         self.shutdown();
-                        return Err(format!("{error} Runtime log: {}", self.config.log_dir.join("dm-runtime.log").display()));
+                        return Err(format!(
+                            "{error} Runtime log: {}",
+                            self.config.log_dir.join("dm-runtime.log").display()
+                        ));
                     }
                     last_error = error;
                 }
@@ -406,6 +413,20 @@ impl LocalDm {
             }
             thread::sleep(Duration::from_millis(200));
         }
+        self.generate_with_io(context, player_text, lookup, |route, body| {
+            post(port, &secret, route, body)
+        })
+    }
+
+    /// The same bounded turn controller is exercised with scripted runtime responses
+    /// in tests. Transport/startup remain owned by `generate` above.
+    fn generate_with_io(
+        &self,
+        context: &DmContext,
+        player_text: &str,
+        lookup: &impl Fn(DmReadRequest) -> Result<Value, String>,
+        mut request: impl FnMut(&str, &Value) -> Result<Value, String>,
+    ) -> Result<DmProposal, String> {
         let mut read_results = Vec::new();
         let mut omitted_reads = false;
         for round in 0..=3 {
@@ -420,18 +441,14 @@ impl LocalDm {
                     3 - round,
                     omitted_reads,
                 );
-                let template = post(
-                    port,
-                    &secret,
+                let template = request(
                     "/apply-template",
                     &json!({"messages":messages,"chat_template_kwargs":{"enable_thinking":false}}),
                 )?;
                 let prompt = template["prompt"]
                     .as_str()
                     .ok_or("Local runtime returned no chat template.")?;
-                let tokens = post(
-                    port,
-                    &secret,
+                let tokens = request(
                     "/tokenize",
                     &json!({"content":prompt,"add_special":true,"parse_special":true}),
                 )?;
@@ -453,15 +470,13 @@ impl LocalDm {
                 skip += 1;
             };
             self.check_cancelled()?;
-            let response = post(
-                port,
-                &secret,
+            let response = request(
                 "/v1/chat/completions",
                 &json!({
                     "model":"dungeon-master","messages":messages,"stream":false,
                     "temperature":0.7,"top_p":0.8,"max_tokens":OUTPUT_TOKENS,
                     "chat_template_kwargs":{"enable_thinking":false},"reasoning_effort":"none",
-                    "response_format":{"type":"json_schema","schema":proposal_schema()}
+                    "response_format":{"type":"json_schema","schema":proposal_schema(round < 3)}
                 }),
             );
             self.check_cancelled()?;
@@ -472,12 +487,11 @@ impl LocalDm {
             if round == 3 {
                 return Err("The DM used its lookup allowance without finishing. Try a more focused action; no turn was saved.".into());
             }
-            if reply.requests.len() > 2
-                || !reply.narration.trim().is_empty()
-                || !reply.choices.is_empty()
-            {
-                return Err("The DM mixed draft narration with a lookup. No turn was saved; retry your action.".into());
+            if reply.requests.len() > 2 {
+                return Err("The DM requested too many lookups at once. No turn was saved; retry your action.".into());
             }
+            // A read response is intermediate, even if the model also drafted prose.
+            // Never show, remember, or commit that prose before the real results arrive.
             for request in reply.requests {
                 self.check_cancelled()?;
                 let result = match lookup(request.clone()) {
@@ -715,21 +729,24 @@ fn messages_with_reads(
     reads_remaining: usize,
     omitted_reads: bool,
 ) -> Value {
-    let transcript: Vec<_> = context
-        .history
-        .iter()
-        .skip(skip)
-        .map(|t| json!({"player":t.player_text,"dm":t.reply.narration,"choices":t.reply.choices}))
-        .collect();
-    json!([
-        {"role":"system","content":format!("{INSTRUCTIONS}\n{CONTRACT}")},
-        {"role":"user","content":json!({"applicationState":context.state,"campaignId":context.campaign_id,"stateRevision":context.state_seq,
-            "earlierTurnsOmitted":context.total_turns > transcript.len() as i64,
-            "recentTranscript":transcript,"playerAction":player_text,"readResults":read_results,"readsRemaining":reads_remaining,"earlierReadResultsOmitted":omitted_reads}).to_string()}
-    ])
+    let mut messages =
+        vec![json!({"role":"system","content":format!("{INSTRUCTIONS}\n{CONTRACT}")})];
+    let transcript = &context.history[skip.min(context.history.len())..];
+    // Give the model actual alternating conversation roles, rather than putting
+    // every earlier reply inside a single user message it can accidentally echo.
+    for turn in transcript {
+        messages.push(
+            json!({"role":"user","content":json!({"playerAction":turn.player_text}).to_string()}),
+        );
+        messages.push(json!({"role":"assistant","content":json!({"schemaVersion":1,"narration":turn.reply.narration,"choices":turn.reply.choices,"requests":[]}).to_string()}));
+    }
+    messages.push(json!({"role":"user","content":json!({"applicationState":context.state,"campaignId":context.campaign_id,"stateRevision":context.state_seq,
+        "earlierTurnsOmitted":context.total_turns > transcript.len() as i64,
+        "playerAction":player_text,"readResults":read_results,"readsRemaining":reads_remaining,"earlierReadResultsOmitted":omitted_reads}).to_string()}));
+    json!(messages)
 }
 
-fn proposal_schema() -> Value {
+fn proposal_schema(allow_reads: bool) -> Value {
     let text = |max| json!({"type":"string","maxLength":max});
     let object = |properties: Value, required: Vec<&str>| json!({"type":"object","additionalProperties":false,"properties":properties,"required":required});
     let nullable_id = json!({"type":["string","null"],"maxLength":80});
@@ -759,12 +776,22 @@ fn proposal_schema() -> Value {
             vec!["kind", "operation", "a", "b"],
         ),
     ];
-    object(
-        json!({"schemaVersion":{"type":"integer","const":1},"narration":{"type":"string","maxLength":6000},
+    let final_reply = object(
+        json!({"schemaVersion":{"type":"integer","const":1},"narration":{"type":"string","minLength":1,"maxLength":6000},
         "choices":{"type":"array","maxItems":4,"items":{"type":"string","minLength":1,"maxLength":240}},
-        "requests":{"type":"array","maxItems":2,"items":{"oneOf":tools}}}),
+        "requests":{"type":"array","maxItems":0,"items":{"oneOf":tools}}}),
         vec!["schemaVersion", "narration", "choices", "requests"],
-    )
+    );
+    if !allow_reads {
+        return final_reply;
+    }
+    let read_request = object(
+        json!({"schemaVersion":{"type":"integer","const":1},"narration":{"const":""},
+        "choices":{"type":"array","maxItems":0,"items":text(240)},
+        "requests":{"type":"array","minItems":1,"maxItems":2,"items":{"oneOf":tools}}}),
+        vec!["schemaVersion", "narration", "choices", "requests"],
+    );
+    json!({"oneOf":[final_reply,read_request]})
 }
 
 #[cfg(test)]

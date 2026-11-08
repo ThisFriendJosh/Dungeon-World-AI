@@ -12,7 +12,14 @@ const installedCargo=join(env.CARGO_HOME||join(homedir(),".cargo"),"bin","cargo.
 const rust=spawnSync(existsSync(installedCargo)?installedCargo:"cargo",["build","--offline","--manifest-path","apps/desktop/src-tauri/Cargo.toml","--features","tauri/custom-protocol"],{cwd:root,env,stdio:"inherit",windowsHide:true});
 if(rust.error)throw rust.error;if(rust.status!==0)process.exit(rust.status??1);
 const output=join(root,"build","native");mkdirSync(output,{recursive:true});
-try{copyFileSync(join(env.CARGO_TARGET_DIR,"debug","dungeon-world-ai-desktop.exe"),join(output,"dungeon-world-ai-desktop.exe"));}
-catch(error){throw Error("Close the running native app and build again. "+String(error));}
-writeFileSync(join(output,"launch-settings.json"),JSON.stringify({dataDir:env.DWA_DATA_DIR||null},null,2)+"\n","utf8");
+const compiled=join(env.CARGO_TARGET_DIR,"debug","dungeon-world-ai-desktop.exe");
+let appFile="dungeon-world-ai-desktop.exe";
+try{copyFileSync(compiled,join(output,appFile));}
+catch(error){
+  if(!["EBUSY","EPERM","EACCES"].includes(error.code))throw error;
+  appFile="dungeon-world-ai-desktop-"+Date.now()+".exe";
+  copyFileSync(compiled,join(output,appFile));
+  console.log("The running app is still open. The updated build is staged for the next launcher start.");
+}
+writeFileSync(join(output,"launch-settings.json"),JSON.stringify({dataDir:env.DWA_DATA_DIR||null,appFile},null,2)+"\n","utf8");
 console.log("Native app prepared. Open Start-Dungeon-World-AI.cmd from File Explorer.");

@@ -29,7 +29,7 @@ fn model_read_requests_are_typed_and_write_requests_are_rejected() {
     assert_eq!(decoded.requests.len(), 1);
     let bad = json!({"schemaVersion":1,"narration":"","choices":[],"requests":[{"kind":"write","path":"campaign.sqlite"}]});
     assert!(decode_completion(completion(bad, "stop")).is_err());
-    let schema = proposal_schema();
+    let schema = proposal_schema(true);
     let encoded = schema.to_string();
     assert!(!encoded.contains("write"));
     assert!(encoded.contains("distance"));
@@ -181,11 +181,243 @@ fn missing_runtime_never_calls_commit_and_cancellation_has_no_global_process_eff
 }
 #[test]
 fn access_denied_is_fatal_at_startup_instead_of_a_false_model_load_timeout() {
-    let error=local_connection_error(std::io::Error::from_raw_os_error(10013));
+    let error = local_connection_error(std::io::Error::from_raw_os_error(10013));
     assert!(error.contains("10013"));
     assert!(error.contains("blocked"));
     assert!(startup_error_is_fatal(&error));
-    assert!(startup_error_is_fatal("The local DM rejected the request (HTTP 401)."));
-    assert!(!startup_error_is_fatal(&local_connection_error(std::io::Error::from(std::io::ErrorKind::ConnectionRefused))));
-    assert!(!startup_error_is_fatal("The local DM rejected the request (HTTP 503)."));
+    assert!(startup_error_is_fatal(
+        "The local DM rejected the request (HTTP 401)."
+    ));
+    assert!(!startup_error_is_fatal(&local_connection_error(
+        std::io::Error::from(std::io::ErrorKind::ConnectionRefused)
+    )));
+    assert!(!startup_error_is_fatal(
+        "The local DM rejected the request (HTTP 503)."
+    ));
+}
+fn controller_dm() -> LocalDm {
+    LocalDm::new(RuntimeConfig {
+        executable: PathBuf::from("unused-test-runtime"),
+        model: PathBuf::from("unused-test-model.gguf"),
+        log_dir: std::env::temp_dir(),
+        gpu_layers: "0".into(),
+    })
+}
+
+fn mixed_lookup() -> Value {
+    json!({"schemaVersion":1,"narration":"UNCOMMITTED_DRAFT: a secret door opens before the lookup.",
+        "choices":["DRAFT_CHOICE"],"requests":[{"kind":"arithmetic","operation":"add","a":2,"b":3}]})
+}
+
+#[test]
+fn mixed_lookup_discards_draft_then_saves_only_the_completed_reply_after_real_engine_reads() {
+    use dwa_engine::{CampaignStore, DmTurnRequest};
+    use std::cell::Cell;
+    struct Data(PathBuf);
+    impl Drop for Data {
+        fn drop(&mut self) {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+            if self.0.starts_with(&root)
+                && self
+                    .0
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("turn-controller-"))
+            {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+    }
+    let data = Data(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("turn-controller-{}", Uuid::new_v4())),
+    );
+    let store = CampaignStore::new(data.0.join("campaigns")).unwrap();
+    let campaign = store.create_campaign("Lookup regression").unwrap().value;
+    let request = DmTurnRequest {
+        request_id: Uuid::new_v4().to_string(),
+        actor_id: None,
+        player_text: r#""I follow him into the city to the tavern.""#.into(),
+        expected_seq: store
+            .load_dm_history(&campaign.id)
+            .unwrap()
+            .latest_event_seq,
+    };
+    let context = store.prepare_dm_context(&campaign.id, &request).unwrap();
+    let reads = Cell::new(0);
+    let completions = Cell::new(0);
+    let final_text="You follow the guard to the tavern. At its door, he stops to catch his breath. What do you ask him?";
+    let proposal=controller_dm().generate_with_io(&context,&request.player_text,&|tool|{
+        assert_eq!(store.load_dm_history(&campaign.id).unwrap().total_turns,0);
+        reads.set(reads.get()+1);
+        store.read_dm_tool(&campaign.id,context.state_seq,tool).map_err(|e|e.to_string())
+    },|route,body|Ok(match route {
+        "/apply-template"=>{
+            if completions.get()==1 {
+                let encoded=body.to_string();assert!(!encoded.contains("UNCOMMITTED_DRAFT"));assert!(!encoded.contains("DRAFT_CHOICE"));
+                let current:Value=serde_json::from_str(body["messages"].as_array().unwrap().last().unwrap()["content"].as_str().unwrap()).unwrap();
+                assert_eq!(current["readResults"][0]["result"]["result"].as_f64(),Some(5.0));
+                assert_eq!(current["playerAction"],request.player_text);
+            }
+            json!({"prompt":"bounded test prompt"})
+        },
+        "/tokenize"=>json!({"tokens":[1,2,3]}),
+        "/v1/chat/completions"=>{completions.set(completions.get()+1);completion(if completions.get()==1{mixed_lookup()}else{json!({"schemaVersion":1,"narration":final_text,"choices":[],"requests":[]})},"stop")},
+        _=>panic!("unexpected route")
+    })).unwrap();
+    assert_eq!(reads.get(), 1);
+    assert_eq!(completions.get(), 2);
+    assert_eq!(store.load_dm_history(&campaign.id).unwrap().total_turns, 0);
+    store
+        .commit_dm_turn(
+            &campaign.id,
+            &request,
+            proposal,
+            "test-model",
+            PROMPT_VERSION,
+        )
+        .unwrap();
+    drop(store);
+    let reopened = CampaignStore::new(data.0.join("campaigns")).unwrap();
+    let history = reopened.load_dm_history(&campaign.id).unwrap();
+    assert_eq!(history.total_turns, 1);
+    assert_eq!(history.turns[0].reply.narration, final_text);
+    assert_eq!(history.turns[0].player_text, request.player_text);
+    assert!(!serde_json::to_string(&history)
+        .unwrap()
+        .contains("UNCOMMITTED_DRAFT"));
+}
+
+#[test]
+fn response_schema_separates_lookups_from_final_prose_and_disables_reads_at_the_limit() {
+    let schema = proposal_schema(true);
+    let branches = schema["oneOf"].as_array().unwrap();
+    assert_eq!(branches.len(), 2);
+    assert_eq!(branches[0]["properties"]["narration"]["minLength"], 1);
+    assert_eq!(branches[0]["properties"]["requests"]["maxItems"], 0);
+    assert_eq!(branches[1]["properties"]["narration"]["const"], "");
+    assert_eq!(branches[1]["properties"]["choices"]["maxItems"], 0);
+    assert_eq!(branches[1]["properties"]["requests"]["minItems"], 1);
+    assert_eq!(branches[1]["properties"]["requests"]["maxItems"], 2);
+    let final_only = proposal_schema(false);
+    assert!(final_only.get("oneOf").is_none());
+    assert_eq!(final_only["properties"]["requests"]["maxItems"], 0);
+}
+
+#[test]
+fn read_rounds_stay_bounded_even_when_a_runtime_returns_mixed_or_excessive_requests() {
+    use std::cell::Cell;
+    let context = DmContext {
+        campaign_id: "test".into(),
+        state_seq: 1,
+        state: json!({}),
+        history: vec![],
+        total_turns: 0,
+    };
+    let reads = Cell::new(0);
+    let completions = Cell::new(0);
+    let error = controller_dm()
+        .generate_with_io(
+            &context,
+            "Follow the guard.",
+            &|_| {
+                reads.set(reads.get() + 1);
+                Ok(json!({"result":5}))
+            },
+            |route, body| {
+                Ok(match route {
+                    "/apply-template" => json!({"prompt":"test"}),
+                    "/tokenize" => json!({"tokens":[1]}),
+                    "/v1/chat/completions" => {
+                        completions.set(completions.get() + 1);
+                        if completions.get() == 4 {
+                            assert_eq!(
+                                body["response_format"]["schema"]["properties"]["requests"]
+                                    ["maxItems"],
+                                0
+                            );
+                        }
+                        let mut reply = mixed_lookup();
+                        let tool = reply["requests"][0].clone();
+                        reply["requests"].as_array_mut().unwrap().push(tool);
+                        completion(reply, "stop")
+                    }
+                    _ => panic!("unexpected route"),
+                })
+            },
+        )
+        .unwrap_err();
+    assert!(error.contains("lookup allowance"));
+    assert_eq!(reads.get(), 6);
+    assert_eq!(completions.get(), 4);
+    let error = controller_dm()
+        .generate_with_io(
+            &context,
+            "Follow the guard.",
+            &|_| panic!("must not execute an oversized batch"),
+            |route, _| {
+                Ok(match route {
+                    "/apply-template" => json!({"prompt":"test"}),
+                    "/tokenize" => json!({"tokens":[1]}),
+                    "/v1/chat/completions" => {
+                        let mut reply = mixed_lookup();
+                        let tool = reply["requests"][0].clone();
+                        reply["requests"] = json!([tool, tool, tool]);
+                        completion(reply, "stop")
+                    }
+                    _ => panic!("unexpected route"),
+                })
+            },
+        )
+        .unwrap_err();
+    assert!(error.contains("too many lookups"));
+}
+
+#[test]
+fn saved_conversation_roles_keep_the_latest_action_separate_from_the_opening_scene() {
+    let context = DmContext {
+        campaign_id: "campaign".into(),
+        state_seq: 9,
+        state: json!({"authoritative":"current snapshot"}),
+        total_turns: 1,
+        history: vec![dwa_engine::DmTurn {
+            id: "turn".into(),
+            campaign_id: "campaign".into(),
+            request_id: "request".into(),
+            actor_id: None,
+            player_text: "Begin at the gate.".into(),
+            reply: DmProposal {
+                schema_version: 1,
+                narration: "OPENING_SCENE_CANARY".into(),
+                choices: vec!["Follow the guard.".into()],
+            },
+            model: "test".into(),
+            prompt_version: PROMPT_VERSION.into(),
+            based_on_seq: 8,
+            event_seq: 9,
+            created_at: "2026-11-08T10:00:00Z".into(),
+        }],
+    };
+    let payload = messages(&context, "Follow him into the tavern.", 0);
+    let items = payload.as_array().unwrap();
+    assert_eq!(items.len(), 4);
+    assert_eq!(items[1]["role"], "user");
+    assert_eq!(items[2]["role"], "assistant");
+    assert_eq!(items[3]["role"], "user");
+    let current: Value = serde_json::from_str(items[3]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(current["playerAction"], "Follow him into the tavern.");
+    assert_eq!(
+        current["applicationState"]["authoritative"],
+        "current snapshot"
+    );
+    assert_eq!(current["earlierTurnsOmitted"], false);
+    assert!(!items[3]["content"]
+        .as_str()
+        .unwrap()
+        .contains("OPENING_SCENE_CANARY"));
+    let trimmed = messages(&context, "Follow him into the tavern.", 1);
+    assert_eq!(trimmed.as_array().unwrap().len(), 2);
+    let current: Value = serde_json::from_str(trimmed[1]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(current["earlierTurnsOmitted"], true);
+    assert_eq!(current["stateRevision"], 9);
 }
