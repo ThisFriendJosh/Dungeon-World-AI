@@ -3,6 +3,7 @@ import type { CampaignSummary, CharacterSummary, CampaignEvent, Saved } from "./
 import "./style.css";
 import "./tabletop.css";
 import {ArtLibrary} from "./art-library";
+import type {ArtEntry} from "./art-library";
 import {TABLE_ART} from "./bundled-art";
 import "./art-library.css";
 import {RulesPanel} from "./rules-panel";
@@ -24,7 +25,7 @@ import {KnowledgePanel} from "./knowledge-panel";
 import type {KnowledgeSource} from "./knowledge-panel";
 import {HistoryPanel} from "./history-panel";
 import {AssetWorkshop} from "./asset-workshop";
-import type {GeneratedAsset} from "./asset-workshop";
+import type {GeneratedAsset,ArtRuntimeStatus} from "./asset-workshop";
 import "./workspace-tools.css";
 import {installClipboard} from "./clipboard";
 import {compendiumWorkspace} from "./compendium-workspace";
@@ -66,7 +67,7 @@ const selected = () => state.characters.find(c => c.id === state.selectedId);
 const field = (id: string) => root.querySelector<HTMLInputElement | HTMLTextAreaElement>("#" + id)!;
 const lines = (value: unknown[]) => value.map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
 const listValue = (id: string) => field(id).value.split("\n").map(v => v.trim()).filter(Boolean);
-const allowNavigation = () => !dm.pending && ((!state.dirty && !tabletop.dirty && !rules.dirty && !knowledge.dirty) || window.confirm("Discard the unsaved changes?"));
+const allowNavigation = () => {if(dm.pending||assetWorkshop.pending)return false;const dirty=state.dirty||tabletop.dirty||rules.dirty||knowledge.dirty||artLibrary.dirty||assetWorkshop.dirty;if(dirty&&!window.confirm("Discard the unsaved changes?"))return false;if(dirty){artLibrary.discard();assetWorkshop.discard();}return true;};
 const status = (message: string, kind = "info") => {
   state.message = message; state.messageKind = kind;
   const region = root.querySelector<HTMLElement>("#status");
@@ -92,7 +93,7 @@ async function action(work: () => Promise<void>) {
 }
 
 async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
-  const [characters, events, campaigns, board, rolls, scenes, images, rulesState, dmHistory, dmStatus, knowledgeSources, generatedAssets] = await Promise.all([
+  const [characters, events, campaigns, board, rolls, scenes, images, rulesState, dmHistory, dmStatus, knowledgeSources, generatedAssets, artEntries, artStatus] = await Promise.all([
     invoke<CharacterSummary[]>("load_characters", { campaignId: campaign.id }),
     invoke<CampaignEvent[]>("recent_events", { campaignId: campaign.id }),
     invoke<CampaignSummary[]>("list_campaigns"),
@@ -104,7 +105,9 @@ async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
     invoke<DmHistory>("load_dm_history", {campaignId:campaign.id}),
     invoke<DmRuntimeStatus>("dm_runtime_status").catch(() => null),
     invoke<KnowledgeSource[]>("list_knowledge_sources",{campaignId:campaign.id}),
-    invoke<GeneratedAsset[]>("list_generated_assets",{campaignId:campaign.id})
+    invoke<GeneratedAsset[]>("list_generated_assets",{campaignId:campaign.id}),
+    invoke<ArtEntry[]>("list_art",{campaignId:campaign.id}),
+    invoke<ArtRuntimeStatus>("art_runtime_status").catch(()=>null)
   ]);
   state.campaign = campaigns.find(c => c.id === campaign.id) ?? campaign;
   state.campaigns = campaigns;
@@ -116,7 +119,8 @@ async function snapshot(campaign: CampaignSummary, preserveTabletop = false) {
   rules.load(rulesState,preserveTabletop);
   dm.load(campaign.id,dmHistory,dmStatus,rolls);
   knowledge.load(campaign.id,knowledgeSources);
-  assetWorkshop.load(campaign.id,generatedAssets);
+  assetWorkshop.load(campaign.id,generatedAssets,artStatus);
+  artLibrary.load(campaign.id,artEntries);
   historyPanel.load(campaign.id);
   if (!characters.some(c => c.id === state.selectedId)) state.selectedId = characters[0]?.id ?? null;
   state.dirty = false;
@@ -225,7 +229,7 @@ function render() {
     if(state.busy)return;state.compendiumSection=button.dataset.compendiumSection as CompendiumSection;render();
   }));
   if(state.campaign){const campaign=state.campaign;historyPanel.bind(root,{campaignId:campaign.id,expectedSeq:state.latestEventSeq,render,action,
-    isBusy:()=>{if(state.busy||dm.pending)return true;if(state.dirty||tabletop.dirty||rules.dirty||knowledge.dirty){status("Save or discard current edits before editing history.","warning");return true;}return false;},
+    isBusy:()=>{if(state.busy||dm.pending||assetWorkshop.pending)return true;if(state.dirty||tabletop.dirty||rules.dirty||knowledge.dirty||artLibrary.dirty||assetWorkshop.dirty){status("Save or discard current edits before editing history.","warning");return true;}return false;},
     onSaved:(warning,message)=>afterSave(campaign,message,warning),onError:message=>status(message,"error")});}
   if(state.campaign&&state.view==="compendium"&&state.compendiumSection==="documents"){const campaign=state.campaign;knowledge.bind(root,{campaignId:campaign.id,render,action,onDirty:()=>status("Unsaved source text.","warning"),onMessage:message=>status(message),onSaved:warning=>{compendium.invalidate();return afterSave(campaign,"Sources saved in Compendium and indexed for the Dungeon Master.",warning);}});}
   if (state.campaign && state.view === "dm") {
@@ -257,7 +261,7 @@ function render() {
   if(state.campaign&&state.view==="art"){
     const campaign=state.campaign;
     assetWorkshop.bind(root,{campaignId:campaign.id,action,render,onError:message=>status(message,"error"),onSaved:warning=>afterSave(campaign,"PNG, SVG, and token recipe saved with this campaign.",warning),onPlace:(id,name)=>{if(!allowNavigation())return;if(tabletop.addSavedToken(id,name)){state.view="tabletop";status("Generated token placed. Save the scene to keep its position.","warning");render();}else status("This token is unavailable or the scene already has 100 pieces.","error");}});
-    artLibrary.bind(root,{render,onBackground:id=>{if(!allowNavigation())return;if(tabletop.useBundledBackground(id)){state.view="tabletop";status("Background selected. Save scene to keep it.","warning");render();}},onToken:id=>{if(!allowNavigation())return;if(tabletop.addBundledToken(id)){state.view="tabletop";status("Token placed. Set its game values and save the scene.","warning");render();}else status("This scene already contains 100 pieces.","error");}});
+    artLibrary.bind(root,{campaignId:campaign.id,render,action,onError:message=>status(message,"error"),onSaved:warning=>afterSave(campaign,"Artwork and tags saved with this campaign.",warning),onBackground:(id,saved)=>{if(!allowNavigation())return;if(saved?tabletop.useSavedBackground(id):tabletop.useBundledBackground(id)){state.view="tabletop";status("Background selected. Save scene to keep it.","warning");render();}},onToken:(id,saved,name)=>{if(!allowNavigation())return;if(saved?tabletop.addSavedToken(id,name):tabletop.addBundledToken(id)){state.view="tabletop";status("Token placed. Set its game values and save the scene.","warning");render();}else status("This scene already contains 100 pieces.","error");}});
   }
   root.querySelector("#refresh")?.addEventListener("click", () => {
     if (!allowNavigation()) return;
@@ -350,7 +354,7 @@ function eventLabel(event: CampaignEvent): string {
 }
 
 window.addEventListener("beforeunload", event => {
-  if (state.dirty || tabletop.dirty || rules.dirty || knowledge.dirty || dm.pending || dm.hasDraft) { event.preventDefault(); event.returnValue = ""; }
+  if (state.dirty || tabletop.dirty || rules.dirty || knowledge.dirty || dm.pending || dm.hasDraft || assetWorkshop.pending || assetWorkshop.dirty || artLibrary.dirty) { event.preventDefault(); event.returnValue = ""; }
 });
 installClipboard(root,message=>status(message,"warning"));
 render();

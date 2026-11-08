@@ -720,6 +720,7 @@ dependencies = [
  "crc32fast",
  "flate2",
  "getrandom 0.4.3",
+ "png",
  "quick-xml",
  "rusqlite",
  "serde",

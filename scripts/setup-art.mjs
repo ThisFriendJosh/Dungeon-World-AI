@@ -1,0 +1,15 @@
+import {existsSync,mkdirSync} from "node:fs";
+import {homedir} from "node:os";
+import {join,dirname} from "node:path";
+import {fileURLToPath} from "node:url";
+import {spawnSync} from "node:child_process";
+const root=join(dirname(fileURLToPath(import.meta.url)),"..");
+const python=process.env.DWA_ART_PYTHON_PATH||join(homedir(),".unsloth","studio","unsloth_studio","Scripts","python.exe");
+if(!existsSync(python))throw Error("Set DWA_ART_PYTHON_PATH to a Python environment with torch, diffusers, transformers, accelerate, Pillow, safetensors, and huggingface_hub installed.");
+const check=spawnSync(python,["-I","-c","import torch, diffusers, transformers, accelerate, PIL, safetensors, huggingface_hub; print('Image runtime ready; GPU:', torch.cuda.is_available())"],{stdio:"inherit",windowsHide:true});
+if(check.status!==0)throw Error("The selected Python environment is missing image-generation packages.");
+const destination=process.env.DWA_ART_MODEL_DIR||join(process.env.LOCALAPPDATA||join(homedir(),"AppData","Local"),"DungeonWorldAI","models","sd-turbo");
+mkdirSync(destination,{recursive:true});
+console.log("Model and license: https://huggingface.co/stabilityai/sd-turbo (weights are separate from the application).\nDestination: "+destination);
+const result=spawnSync(python,["-I",join(root,"services","art","setup_model.py"),destination],{stdio:"inherit",windowsHide:true});
+if(result.error)throw result.error;process.exitCode=result.status??1;

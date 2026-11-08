@@ -1,6 +1,7 @@
-#![cfg_attr(all(target_os="windows",not(test)),windows_subsystem="windows")]
+#![cfg_attr(all(target_os = "windows", not(test)), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
+mod art_runtime;
 mod clipboard;
 mod reference_documents;
 
@@ -64,10 +65,81 @@ fn edit_history_entry(
 }
 #[tauri::command]
 fn preview_token_asset(
-    store: State<'_, CampaignStore>,
     spec: dwa_engine::TokenSpec,
+    overlay_png_data_url: Option<String>,
 ) -> Result<String, String> {
-    store.preview_token_asset(spec).map_err(|e| e.to_string())
+    dwa_engine::token_svg_with_artwork(&spec, overlay_png_data_url.as_deref())
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn art_runtime_status(runtime: State<'_, art_runtime::ArtRuntime>) -> art_runtime::ArtStatus {
+    runtime.status()
+}
+#[tauri::command]
+fn cancel_token_art(runtime: State<'_, art_runtime::ArtRuntime>) -> bool {
+    runtime.cancel()
+}
+#[tauri::command]
+async fn generate_token_art(
+    app: tauri::AppHandle,
+    request: art_runtime::ArtRequest,
+    progress: tauri::ipc::Channel<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<art_runtime::ArtRuntime>()
+            .generate(request, |message| {
+                let _ = progress.send(message.into());
+            })
+    })
+    .await
+    .map_err(|e| format!("Image worker stopped: {e}"))?
+}
+#[tauri::command]
+fn list_art(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+) -> Result<Vec<dwa_engine::ArtEntry>, String> {
+    store.list_art(&campaign_id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn import_art(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::ArtImport,
+) -> Result<Saved<dwa_engine::ArtEntry>, String> {
+    store
+        .import_art(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn update_art(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    request: dwa_engine::ArtUpdate,
+) -> Result<Saved<dwa_engine::ArtMetadata>, String> {
+    store
+        .update_art(&campaign_id, request)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_art_preview(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+) -> Result<String, String> {
+    store
+        .load_art_preview(&campaign_id, &id)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn load_art_svg(
+    store: State<'_, CampaignStore>,
+    campaign_id: String,
+    id: String,
+) -> Result<String, String> {
+    store
+        .load_art_svg(&campaign_id, &id)
+        .map_err(|e| e.to_string())
 }
 #[tauri::command]
 fn save_token_asset(
@@ -400,6 +472,7 @@ fn main() {
                 app.path().resource_dir()?,
                 data_dir.join("logs"),
             )));
+            app.manage(art_runtime::ArtRuntime::discover(data_dir.join("logs")));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -442,13 +515,22 @@ fn main() {
             preview_token_asset,
             save_token_asset,
             list_generated_assets,
-            load_generated_asset
+            load_generated_asset,
+            art_runtime_status,
+            generate_token_art,
+            cancel_token_art,
+            list_art,
+            import_art,
+            update_art,
+            load_art_preview,
+            load_art_svg
         ])
         .build(tauri::generate_context!())
         .expect("error while building Dungeon World AI")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 app.state::<LocalDm>().shutdown();
+                app.state::<art_runtime::ArtRuntime>().shutdown();
             }
         });
 }

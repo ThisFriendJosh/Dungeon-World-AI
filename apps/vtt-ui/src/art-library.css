@@ -47,6 +47,11 @@
 .art-viewer-image { max-height:72vh;overflow:auto;background:#0c130d;text-align:center;border:1px solid #786842; }
 .art-viewer-image img { display:block;max-width:100%;max-height:72vh;object-fit:contain;margin:auto; }
 .art-viewer-image.full-size img { max-width:none;max-height:none; }
+.art-category-picker{display:flex;flex-wrap:wrap;gap:.5rem 1rem;padding:.8rem;border:1px solid #77663f;border-radius:6px;margin:.8rem 0}
+.art-category-picker .inline-label{display:flex;align-items:center;gap:.4rem;font-size:.8rem;margin:0}.art-category-picker input{width:auto}
+.art-import-review{display:grid;grid-template-columns:160px minmax(0,1fr);gap:1rem;padding:1rem 0;border-bottom:1px solid #766b49}.art-import-review>img{width:160px;max-height:180px;object-fit:contain;background:#142319}.art-import-review label,.art-viewer form label{margin-bottom:.7rem}
+.art-tag-filter{max-width:320px;margin:1rem 0}.art-tags{display:flex;flex-wrap:wrap;gap:.25rem}.art-tags button{font-size:.65rem;padding:.15rem .4rem;background:#374633;color:#eee0bc;border-radius:12px}.art-pages{display:flex;justify-content:center;align-items:center;gap:1rem;margin:1.5rem 0}.art-model-state{padding:.8rem;border:1px solid #756844;border-radius:6px;font-size:.85rem}.art-viewer-toolbar{flex-wrap:wrap}.art-viewer form{margin-top:1rem}
+@media(max-width:650px){.art-import-review{grid-template-columns:1fr}.art-import-review>img{width:120px}.art-category-picker{gap:.5rem}}
 @media(max-width:650px){.art-library{padding:1rem}.art-library-heading{flex-direction:column}.art-library-heading label{flex:auto;width:100%}.art-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}.art-cover{height:180px}.art-card-content{padding:.7rem}.art-card h3{font-size:.95rem}.art-card-actions button{flex:1}.art-viewer{padding:.8rem}.art-viewer h2{font-size:1.1rem}}
 @media(max-width:420px){.art-grid{grid-template-columns:1fr}.art-cover{height:250px}}
 /* Keep the play surface prominent while retaining campaign navigation. */

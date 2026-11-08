@@ -120,6 +120,10 @@ On Windows the root dev/build scripts default to a Rust build cache under LOCALA
 
 In Windows PowerShell, use npm.cmd ci and npm.cmd run dev when the npm.ps1 wrapper is blocked by the local script policy.
 
+## Artwork
+
+Art & codex supports campaign image uploads, multiple categories, and editable custom tags. The token workshop draws sprites with a local image model and keeps frame/color controls separate. Open `Setup-Local-Art.cmd` once to download the model; imports work without it. See [art library and AI sprites](docs/art-library-and-sprites.md).
+
 ## License
 
 AGPL-3.0-or-later. Retain upstream notices when adapting third-party source.

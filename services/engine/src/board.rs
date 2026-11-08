@@ -430,9 +430,9 @@ impl CampaignStore {
             [campaign_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
-        if count >= 100 || total + data.len() as u64 > 52_428_800 {
+        if count >= 500 || total + data.len() as u64 > 536_870_912 {
             return Err(EngineError::Invalid(
-                "This campaign's image allowance is 100 images / 50 MB.".into(),
+                "This campaign's image allowance is 500 images / 512 MB.".into(),
             ));
         }
         let image = SceneImage {
