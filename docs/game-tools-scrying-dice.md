@@ -8,6 +8,8 @@ Each campaign has a saved game clock and up to 20 named countdowns or stopwatche
 
 Running real timers use a saved wall-clock anchor, including while the application is closed. Game timers tick only when the user advances game time. Advance one round (six seconds), one minute, ten minutes, one hour, eight hours, or a custom number of seconds up to one day per action. Timer transitions and game-time changes are transactional, revision checked, and recorded once per action. No per-second database writes are made. Expired timers show Complete; no sound, external notification, or sheet mutation is triggered.
 
+**Adjust game time** provides Remove time (seconds, rounds, minutes, hours, or days) and Set game time (days/hours/minutes/seconds). Enter zeros to reset the elapsed clock. Use current clock restores the saved value into the edit fields. These are clock corrections: they retain timer values and completed/paused states; Advance remains the action that ticks game timers. Corrections are bounded between zero and 3650 days, reject subtraction below zero, and save a before/after audit entry atomically with the changed clock.
+
 Calculator tools include bounded arithmetic with parentheses, a rules-profile calculator for ability/proficiency/spell-save/concentration/exhaustion values, and damage/healing previews with temporary HP, immunity, resistance, vulnerability, and healing caps. A saved character can supply Strength, level, HP and speed as starting values. Calculations are previews; apply chosen results to the character sheet separately. Spell effects, concentration, death saves, rests and resource recovery remain manual. The DM receives a snapshot of the clocks explicitly labeled as timekeeping.
 
 ## 2. Scrying Pane

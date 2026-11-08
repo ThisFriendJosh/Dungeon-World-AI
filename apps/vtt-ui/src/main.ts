@@ -27,7 +27,7 @@ import {HistoryPanel} from "./history-panel";
 import {AssetWorkshop} from "./asset-workshop";
 import type {GeneratedAsset,ArtRuntimeStatus} from "./asset-workshop";
 import "./workspace-tools.css";
-import {GameToolsPanel} from "./game-tools";
+import {GameToolsPanel,clockText} from "./game-tools";
 import type {GameTools} from "./game-tools";
 import "./game-tools.css";
 import {WORKSPACE_TABS} from "./workspace-tabs";
@@ -360,7 +360,7 @@ function eventLabel(event: CampaignEvent): string {
   if (event.eventType === "dm.turn.saved") return "Dungeon Master turn saved";
   if (event.eventType === "knowledge.imported") return "DM source imported: "+event.payload.title;
   if (event.eventType === "asset.created") return "Visual asset created: "+event.payload.name;
-  if (event.eventType === "tools.changed") return "Game clock / timer updated";
+  if (event.eventType === "tools.changed") {const operation=event.payload.operation as {kind?:string}|undefined;if(operation?.kind==="setTime"||operation?.kind==="subtractTime"){const before=typeof event.payload.previousGameTimeMs==="number"?event.payload.previousGameTimeMs:0;const after=typeof event.payload.gameTimeMs==="number"?event.payload.gameTimeMs:0;return "Game time corrected: "+clockText(before)+" → "+clockText(after);}return "Game clock / timer updated";}
   if (event.eventType === "scrying.bookmark.saved") return "Browser bookmark saved: "+event.payload.title;
   if (event.eventType === "scrying.bookmark.removed") return "Browser bookmark removed";
   if (event.eventType === "history.entry.removed") return "History entry removed";
