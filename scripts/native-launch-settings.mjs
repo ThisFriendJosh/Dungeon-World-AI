@@ -26,3 +26,10 @@ export function updatedNativeSettings(previous,env,appFile){
   validateSettings(previous);validateAppFile(appFile);
   return {...previous,appFile,dataDir:env.DWA_DATA_DIR?.trim()||previous.dataDir?.trim()||null};
 }
+export function interactiveLaunchProblem(root,env={}){
+  if(env.CODEX_SANDBOX_NETWORK_DISABLED!=="1")return null;
+  return "This task runner has networking disabled. Launching the app here can cause Windows socket error 10013. Build and run offline checks here; for live AI and desktop testing, open "+join(root,"Start-Dungeon-World-AI.cmd")+" yourself from File Explorer or a normal PowerShell window. The workspace files do not need to be installed.";
+}
+export function requireInteractiveLaunch(root,env={}){
+  const problem=interactiveLaunchProblem(root,env);if(problem)throw Error(problem);
+}

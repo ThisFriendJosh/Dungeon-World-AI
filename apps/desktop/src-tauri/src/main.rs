@@ -657,6 +657,11 @@ fn load_content_entry(
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            if std::env::var("DWA_WORKSPACE").as_deref() == Ok("1") {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_title(concat!("Dungeon World AI - Workspace ", env!("CARGO_PKG_VERSION")))?;
+                }
+            }
             let data_dir = match std::env::var("DWA_DATA_DIR") {
                 Ok(path) if !path.trim().is_empty() => PathBuf::from(path),
                 _ => app.path().app_data_dir()?,

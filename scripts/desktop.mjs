@@ -3,11 +3,13 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import {requireInteractiveLaunch} from "./native-launch-settings.mjs";
 
 const mode = process.argv[2];
 if (!["dev", "build"].includes(mode)) throw new Error("Usage: node scripts/desktop.mjs dev|build");
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const env = { ...process.env };
+if(mode==="dev")requireInteractiveLaunch(root,env);
 // Avoid OneDrive's read-only directory attribute breaking Rust build-script probes.
 if (process.platform === "win32" && !env.CARGO_TARGET_DIR) {
   env.CARGO_TARGET_DIR = join(env.LOCALAPPDATA || tmpdir(), "DungeonWorldAI", "cargo-target");
