@@ -1,6 +1,6 @@
 # Windows beta installer
 
-Testers open `Dungeon-World-AI-0.2.2-beta.1-Windows-Setup.msi`, choose Install, then Finish. The MSI installs for the current Windows account, creates desktop and Start menu shortcuts, and opens the graphical local AI setup when selected. No Node, Rust, terminal, or developer folder is needed by a tester.
+Testers open `Dungeon-World-AI-0.2.3-beta.1-Windows-Setup.msi`, choose Install, then Finish. The MSI installs for the current Windows account, creates desktop and Start menu shortcuts, and opens the graphical local AI setup when selected. No Node, Rust, terminal, or developer folder is needed by a tester.
 
 The package includes the release app, complete current CEF Scrying Pane runtime, portable CPU llama.cpp engine, private Python distribution, and native runtime DLLs including OpenMP. Models are explicit, separate downloads. Narration uses the CPU in this beta; 16 GB RAM is recommended. Optional art setup selects CUDA 13 packages when a compatible NVIDIA driver is present, and CPU packages otherwise. CPU image generation can be slow.
 
@@ -33,7 +33,7 @@ npm run build:ui
 cargo build --offline --release --manifest-path apps/desktop/src-tauri/Cargo.toml --features tauri/custom-protocol
 ```
 
-Build a portable CPU-only llama-server from a licensed llama.cpp source checkout. Disable CUDA and native tuning; the baseline build also disables SSE4.2, AVX, AVX2, BMI2, FMA and F16C. Disable the web UI, remote prebuilt UI download, OpenSSL and llama-connect. MSBuild may need one worker inside an app-container workspace. None of these compiler requirements apply to testers.
+Build a portable CPU-only llama-server from a licensed llama.cpp source checkout. Use `scripts/build-dm-runtime.py` to disable CUDA and native-only tuning while building runtime-selected CPU variants. Keep both the baseline x64 DLL and accelerated DLLs. Shipping only the no-SIMD backend made beta 0.2.2 prefill too slow for its former three-minute timeout on test machines. Disable the web UI, remote prebuilt UI download, OpenSSL and llama-connect. MSBuild may need one worker inside an app-container workspace. None of these compiler requirements apply to testers.
 
 Run `python scripts/build-beta.py --help`. Supply the release app, CPU runtime directory, Python 3.13 base distribution with pip, licensed Visual C++ x64 CRT redist directory (with the adjacent OpenMP directory), and llama source directory for notices. Install the Windows SDK's Windows Installer development tools on the build PC. The builder performs no downloads. It compiles the GUI helper, generates declarative IDT tables, and invokes Microsoft's signed MsiDb and Windows MakeCab to create an MSI with an embedded LZX cabinet. Outputs go to ignored `build/beta` unless `--output` is supplied. Use a new output directory for each build.
 
@@ -46,3 +46,5 @@ Every successful build refreshes `build/beta-release/DungeonWorldAI-Beta-Setup.m
 Workspace launches honor canonical, timestamped and versioned executable filenames. An invalid selection fails clearly instead of opening an older build. Rebuilding preserves the existing workspace save folder. `node scripts/native-dm.mjs --check` prints the selected executable and checksum without opening the app. Installed beta saves and workspace saves remain separate unless deliberately migrated.
 
 For interactive QA, install to an isolated `INSTALLDIR` with `CREATE_DESKTOP=0`, an isolated `DwaMenu`, and `DWA_NO_LAUNCH=1`. Set the helper's `DWA_SETUP_TEST_ROOT` to the same path to keep test campaigns beneath it. Do not target existing user data. Full install/repair/uninstall and initial model downloads still require a normal Windows test session when automation cannot access Windows Installer or the network.
+
+Beta 0.2.3 uses a compact application prompt, a 15-minute completion ceiling, live local progress, and worker teardown after failed requests. Model loading still has its own bounded startup check. Cancel stops only the app-owned worker. The CPU dispatcher selects supported instructions; it does not require AVX2 on every tester system.

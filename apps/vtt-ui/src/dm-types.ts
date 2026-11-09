@@ -4,4 +4,4 @@ export type DmTurn = {
   model:string;promptVersion:string;basedOnSeq:number;eventSeq:number;createdAt:string;
 };
 export type DmHistory = {turns:DmTurn[];totalTurns:number;latestEventSeq:number};
-export type DmRuntimeStatus = {configured:boolean;running:boolean;busy:boolean;model:string;message:string};
+export type DmRuntimeStatus = {configured:boolean;running:boolean;busy:boolean;model:string;message:string;progress?:{phase:string;elapsedSeconds:number;promptTokens:number|null;processedTokens:number|null;generatedTokens:number|null}|null};
