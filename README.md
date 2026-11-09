@@ -8,6 +8,8 @@ Open **Dungeon-World-AI-0.2.3-beta.1-Windows-Setup.msi**, choose **Install**, th
 
 See the [short beta guide](docs/beta-start-here.txt) and [installer build and verification notes](docs/beta-installer.md). This is an unsigned beta; the normal Windows install and initial downloads need a clean-PC test before wider distribution.
 
+For development, open `Start-Dungeon-World-AI.cmd` from File Explorer. It checks and rebuilds changed workspace source before launching. Use `Update-Dungeon-World-AI.cmd` to build without opening the app. See [workspace updates and Windows socket error 10013](docs/workspace-development.md) for the distinction between restricted build checks and live Windows testing.
+
 ## Current milestone: local AI Dungeon Master integration
 
 - Open the Dungeon Master tab, choose a character, and send a player action to a local GGUF model.

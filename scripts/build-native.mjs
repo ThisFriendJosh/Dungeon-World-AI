@@ -1,27 +1,32 @@
-import {mkdirSync,copyFileSync,existsSync,writeFileSync} from "node:fs";
+import {mkdirSync,copyFileSync,existsSync,writeFileSync,renameSync} from "node:fs";
 import {homedir} from "node:os";
 import {join,dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 import {spawnSync} from "node:child_process";
 import {readNativeSettings,updatedNativeSettings} from "./native-launch-settings.mjs";
+import {buildRecord,nativeInputs,workspaceSaveFolder} from "./native-build-state.mjs";
 const root=join(dirname(fileURLToPath(import.meta.url)),"..");
 const previousSettings=readNativeSettings(root);
 if(process.platform!=="win32")throw Error("This native development launcher currently targets Windows.");
+const inputs=nativeInputs(root);
 const env={...process.env,CARGO_INCREMENTAL:"0"};env.CARGO_TARGET_DIR||=join(root,"build","cargo-target");
 const ui=spawnSync(env.ComSpec||"cmd.exe",["/d","/s","/c","npm.cmd run build:ui"],{cwd:root,env,stdio:"inherit",windowsHide:true});
 if(ui.error)throw ui.error;if(ui.status!==0)process.exit(ui.status??1);
 const installedCargo=join(env.CARGO_HOME||join(homedir(),".cargo"),"bin","cargo.exe");
-const rust=spawnSync(existsSync(installedCargo)?installedCargo:"cargo",["build","--offline","--manifest-path","apps/desktop/src-tauri/Cargo.toml","--features","tauri/custom-protocol"],{cwd:root,env,stdio:"inherit",windowsHide:true});
+const rust=spawnSync(existsSync(installedCargo)?installedCargo:"cargo",["build","--offline","--release","--manifest-path","apps/desktop/src-tauri/Cargo.toml","--features","tauri/custom-protocol"],{cwd:root,env,stdio:"inherit",windowsHide:true});
 if(rust.error)throw rust.error;if(rust.status!==0)process.exit(rust.status??1);
+if(nativeInputs(root).sha256!==inputs.sha256)throw Error("Source files changed during the build. Run the workspace update again; the previous app selection was kept.");
 const output=join(root,"build","native");mkdirSync(output,{recursive:true});
-const compiled=join(env.CARGO_TARGET_DIR,"debug","dungeon-world-ai-desktop.exe");
-let appFile="dungeon-world-ai-desktop.exe";
-try{copyFileSync(compiled,join(output,appFile));}
-catch(error){
-  if(!["EBUSY","EPERM","EACCES"].includes(error.code))throw error;
-  appFile="dungeon-world-ai-desktop-"+Date.now()+".exe";
-  copyFileSync(compiled,join(output,appFile));
-  console.log("The running app is still open. The updated build is staged for the next launcher start.");
+const compiled=join(env.CARGO_TARGET_DIR,"release","dungeon-world-ai-desktop.exe");
+const appFile="dungeon-world-ai-desktop-"+Date.now()+".exe";
+copyFileSync(compiled,join(output,appFile));
+const record=buildRecord(root,join(output,appFile),inputs);
+const next=updatedNativeSettings(previousSettings,env,appFile);
+next.dataDir=workspaceSaveFolder(root,next);
+function writeJson(name,value){
+  const file=join(output,name),temporary=file+"."+process.pid+".tmp";
+  writeFileSync(temporary,JSON.stringify(value,null,2)+"\n","utf8");renameSync(temporary,file);
 }
-writeFileSync(join(output,"launch-settings.json"),JSON.stringify(updatedNativeSettings(previousSettings,env,appFile),null,2)+"\n","utf8");
-console.log("Native app prepared. Open Start-Dungeon-World-AI.cmd from File Explorer.");
+writeJson("build-info.json",record);writeJson("launch-settings.json",next);
+console.log("Workspace "+record.version+" updated from current source files. Saves: "+next.dataDir);
+console.log("Close an older workspace window, then open Start-Dungeon-World-AI.cmd from File Explorer for live testing.");

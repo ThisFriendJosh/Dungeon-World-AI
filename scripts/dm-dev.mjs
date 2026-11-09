@@ -3,9 +3,11 @@ import {homedir} from "node:os";
 import {join,dirname,basename} from "node:path";
 import {fileURLToPath} from "node:url";
 import {spawn} from "node:child_process";
+import {requireInteractiveLaunch} from "./native-launch-settings.mjs";
 
 const root=join(dirname(fileURLToPath(import.meta.url)),"..");
 const env={...process.env};
+requireInteractiveLaunch(root,env);
 // Development convenience only: reuse the already installed workbench runtime
 // and model. The application owns its own process; no Unsloth server is needed.
 if(!env.LOCAL_LLM_SERVER_PATH?.trim()){
