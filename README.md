@@ -4,7 +4,7 @@ An offline-first desktop virtual tabletop for solo play.
 
 ## Windows beta installer
 
-Open **Dungeon-World-AI-0.2.1-beta.1-Windows-Setup.msi**, choose **Install**, then **Finish** to open guided local AI setup. Desktop and Start menu shortcuts open the app. No developer tools or API keys are needed. The app and Scrying Pane are bundled; the Dungeon Master model and optional AI art download once during setup. Campaigns and models stay on disk when the app is uninstalled.
+Open **Dungeon-World-AI-0.2.3-beta.1-Windows-Setup.msi**, choose **Install**, then **Finish** to open guided local AI setup. Desktop and Start menu shortcuts open the app. No developer tools or API keys are needed. The app and Scrying Pane are bundled; the Dungeon Master model and optional AI art download once during setup. Campaigns and models stay on disk when the app is uninstalled.
 
 See the [short beta guide](docs/beta-start-here.txt) and [installer build and verification notes](docs/beta-installer.md). This is an unsigned beta; the normal Windows install and initial downloads need a clean-PC test before wider distribution.
 
