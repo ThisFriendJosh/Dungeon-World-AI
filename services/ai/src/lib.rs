@@ -15,12 +15,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub const PROMPT_VERSION: &str = "dm-narrator-v0.6-saved-workspace";
+mod progress;
+pub use progress::RuntimeProgress;
+pub const PROMPT_VERSION: &str = "dm-narrator-v0.7-cpu-progress";
+const COMPLETION_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const CONTEXT_TOKENS: usize = 8192;
 const OUTPUT_TOKENS: usize = 1024;
 const RESPONSE_LIMIT: u64 = 1_000_000;
 const CONNECTION_DENIED: &str = "The operating system blocked the app's local AI connection";
-const INSTRUCTIONS: &str = include_str!("../prompts/dungeon-master-v0.1.md");
+const INSTRUCTIONS: &str = "You are the Dungeon Master for a local tabletop roleplaying game. Use the campaign's selected edition, house rules, tone and boundaries. Narrate a coherent, responsive adventure with consistent NPC motives and meaningful choices. Describe what the player can perceive; the player controls their character's decisions, speech, thoughts and emotions. Let established circumstances support clever plans. Ask for an actual roll or ruling when an outcome is uncertain. Do not force a plot, invent a mechanical result, or infer a damage expression from an attack bonus. Keep replies concise and stop at the next meaningful player decision.";
 const CONTRACT: &str = r#"
 ACTIVE APPLICATION CONTRACT (overrides standalone prototype behavior):
 The application is connected to campaign saves. Each accepted player action and your reply
@@ -153,6 +156,7 @@ pub struct RuntimeStatus {
     pub busy: bool,
     pub model: String,
     pub message: String,
+    pub progress: Option<RuntimeProgress>,
 }
 
 #[derive(Default)]
@@ -162,6 +166,10 @@ struct ProcessState {
     secret: String,
     busy: bool,
     cancelled: bool,
+    phase: &'static str,
+    started_at: Option<Instant>,
+    prompt_tokens: Option<usize>,
+    generation_log_start: u64,
 }
 
 pub struct LocalDm {
@@ -197,6 +205,17 @@ impl LocalDm {
             .child
             .as_mut()
             .is_some_and(|c| matches!(c.try_wait(), Ok(None)));
+        let progress = if s.busy {
+            Some(progress::snapshot(
+                &self.config.log_dir.join("dm-runtime.log"),
+                s.generation_log_start,
+                s.phase,
+                s.started_at.map(|at| at.elapsed().as_secs()).unwrap_or(0),
+                s.prompt_tokens,
+            ))
+        } else {
+            None
+        };
         let validation = self.config.validate();
         Ok(RuntimeStatus {
             configured: validation.is_ok(),
@@ -204,16 +223,30 @@ impl LocalDm {
             busy: s.busy,
             model: self.config.model_name(),
             message: validation.err().unwrap_or_else(|| {
-                if s.busy {
-                    "The Dungeon Master is preparing a reply."
-                } else if running {
+                if let Some(progress) = &progress {
+                    return progress.message();
+                }
+                if running {
                     "Local model loaded. Ready to continue."
                 } else {
                     "Local model ready. It will load with your first action."
                 }
                 .into()
             }),
+            progress,
         })
+    }
+
+    fn set_phase(&self, phase: &'static str, prompt_tokens: Option<usize>) {
+        if let Ok(mut s) = self.state.lock() {
+            s.phase = phase;
+            s.prompt_tokens = prompt_tokens;
+            if phase == "reading" {
+                s.generation_log_start = fs::metadata(self.config.log_dir.join("dm-runtime.log"))
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+            }
+        }
     }
 
     /// Cancellation and final commit share this lock: a cancelled generation can
@@ -275,9 +308,18 @@ impl LocalDm {
                 .map_err(|_| "DM runtime lock unavailable.")?;
             s.busy = true;
             s.cancelled = false;
+            s.started_at = Some(Instant::now());
+            s.phase = "loading";
+            s.prompt_tokens = None;
         }
         let _busy = BusyGuard(self);
-        let proposal = self.generate(context, player_text, &lookup)?;
+        let proposal = match self.generate(context, player_text, &lookup) {
+            Ok(proposal) => proposal,
+            Err(error) => {
+                self.shutdown();
+                return Err(error);
+            }
+        };
         let s = self
             .state
             .lock()
@@ -334,7 +376,18 @@ impl LocalDm {
                 command.env_remove(key);
             }
         }
+        let parallelism = thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
+        let decode_threads = parallelism.min(8).max(1).to_string();
+        let batch_threads = parallelism.min(32).max(1).to_string();
         command
+            .args([
+                "--threads",
+                &decode_threads,
+                "--threads-batch",
+                &batch_threads,
+            ])
             .args(["--model"])
             .arg(&self.config.model)
             .args([
@@ -350,6 +403,10 @@ impl LocalDm {
                 &CONTEXT_TOKENS.to_string(),
                 "--parallel",
                 "1",
+                "--batch-size",
+                "512",
+                "--ubatch-size",
+                "256",
                 "--gpu-layers",
                 &self.config.gpu_layers,
                 "--offline",
@@ -425,6 +482,7 @@ impl LocalDm {
             }
             thread::sleep(Duration::from_millis(200));
         }
+        self.set_phase("preparing", None);
         self.generate_with_io(context, player_text, lookup, |route, body| {
             post(port, &secret, route, body)
         })
@@ -469,6 +527,7 @@ impl LocalDm {
                     .ok_or("Local runtime returned no token count.")?
                     .len();
                 if count + OUTPUT_TOKENS + 128 <= CONTEXT_TOKENS {
+                    self.set_phase("reading", Some(count));
                     break messages;
                 }
                 if skip == context.history.len() {
@@ -508,6 +567,7 @@ impl LocalDm {
             }
             // A read response is intermediate, even if the model also drafted prose.
             // Never show, remember, or commit that prose before the real results arrive.
+            self.set_phase("lookup", None);
             for request in reply.requests {
                 self.check_cancelled()?;
                 let result = match lookup(request.clone()) {
@@ -566,7 +626,11 @@ fn post(port: u16, secret: &str, route: &str, body: &Value) -> Result<Value, Str
         "POST",
         route,
         Some(body),
-        Duration::from_secs(180),
+        if route == "/v1/chat/completions" {
+            COMPLETION_TIMEOUT
+        } else {
+            Duration::from_secs(30)
+        },
     )
 }
 
@@ -618,8 +682,10 @@ fn http_json(
         stream
             .set_read_timeout(Some(remaining))
             .map_err(|e| e.to_string())?;
-        let n = stream.read(&mut chunk).map_err(|_| {
-            "The local DM stopped responding. Your campaign is unchanged; retry your action."
+        let n = stream.read(&mut chunk).map_err(|error| {
+            if matches!(error.kind(),std::io::ErrorKind::TimedOut|std::io::ErrorKind::WouldBlock)||error.raw_os_error()==Some(10060){
+                "The local model exceeded the reply time limit. Its worker will restart before your next attempt; your action is still a draft.".to_string()
+            }else{format!("The local DM connection ended before the reply completed ({error}). Its worker will restart; your campaign is unchanged.")}
         })?;
         if n == 0 {
             break;

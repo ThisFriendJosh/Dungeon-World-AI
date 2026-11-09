@@ -37,6 +37,11 @@ class PayloadPolicy(unittest.TestCase):
         self.assertIn("DungeonWorldAI.exe", names)
         self.assertIn("app/dungeon-world-ai-desktop.exe", names)
         self.assertIn("app/ai/llama-server.exe", names)
+        version = tuple(int(n) for n in pack["version"].split("-")[0].split("."))
+        if version >= (0, 2, 3):
+            self.assertIn("app/ai/ggml-cpu-x64.dll", names)
+            self.assertIn("app/ai/ggml-cpu-haswell.dll", names)
+
         self.assertTrue(any(n.endswith("/ScryingPane.exe") for n in names))
         for f in pack["files"]:
             self.assertNotIn("source", f)

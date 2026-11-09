@@ -533,3 +533,76 @@ fn inspect_request_roundtrips_and_schema_exposes_saved_workspace_continuations()
     assert!(CONTRACT.contains("PREVIEWS"));
     assert!(CONTRACT.contains("cannot visually interpret"));
 }
+
+#[test]
+fn installed_cpu_prompt_is_compact_and_can_be_checked_offline() {
+    let context = DmContext {
+        campaign_id: "runtime-check".into(),
+        state_seq: 1,
+        state: json!({"campaign":"Runtime check","rules":{"config":{"profile":"5e-2024"}},"party":[],"scene":null,"knowledgeSources":[],"recordedDiceRolls":[]}),
+        history: vec![],
+        total_turns: 0,
+    };
+    let messages = messages(
+        &context,
+        "Begin at a city gate. Introduce a wounded guard, then wait for my action.",
+        0,
+    );
+    let system = messages[0]["content"].as_str().unwrap();
+    assert!(
+        system.len() < 9000,
+        "The system prompt should not duplicate the standalone prototype: {} bytes",
+        system.len()
+    );
+    assert!(!system.contains("Status: prototype instruction profile"));
+    assert!(system.contains("player controls"));
+    assert!(system.contains("GM-only"));
+    assert!(COMPLETION_TIMEOUT >= Duration::from_secs(600));
+    if let Some(output) = std::env::var_os("DWA_DM_EXPORT_SMOKE") {
+        let output = PathBuf::from(output);
+        fs::create_dir_all(&output).unwrap();
+        let mut prompt = String::new();
+        for message in messages.as_array().unwrap() {
+            prompt.push_str(&format!(
+                "<|im_start|>{}\n{}<|im_end|>\n",
+                message["role"].as_str().unwrap(),
+                message["content"].as_str().unwrap()
+            ));
+        }
+        prompt.push_str("<|im_start|>assistant\n<think>\n\n</think>\n\n");
+        fs::write(output.join("prompt.txt"), prompt).unwrap();
+        fs::write(
+            output.join("schema.json"),
+            proposal_schema(false).to_string(),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn progress_uses_only_the_current_request_and_reports_cpu_activity() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("progress-check-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let log = root.join("runtime.log");
+    let previous = "0.01 I slot print_timing: n_gen = 900\n";
+    let current =
+        "0.02 I slot print_timing: prompt processing, n_tokens =   2048, progress = 0.41\n";
+    fs::write(&log, format!("{previous}{current}")).unwrap();
+    let p = progress::snapshot(&log, previous.len() as u64, "reading", 142, Some(5000));
+    assert_eq!(p.processed_tokens, Some(2048));
+    assert_eq!(p.generated_tokens, None);
+    assert!(p.message().contains("40%"));
+    assert!(p.message().contains("2m 22s"));
+    fs::write(
+        &log,
+        format!("{previous}{current}0.03 I slot print_timing: n_gen = 100, tg = 12.0 t/s\n"),
+    )
+    .unwrap();
+    let p = progress::snapshot(&log, previous.len() as u64, "reading", 150, Some(5000));
+    assert_eq!(p.phase, "writing");
+    assert_eq!(p.generated_tokens, Some(100));
+    assert!(root.starts_with(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target")));
+    fs::remove_dir_all(root).unwrap();
+}

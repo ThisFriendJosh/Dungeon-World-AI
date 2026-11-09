@@ -17,11 +17,12 @@ export class DmPanel {
   private error="";
   private cancelling=false;
   private latestRoll:DiceRoll|null=null;
+  private progressPoll:ReturnType<typeof setInterval>|null=null;private progressGeneration=0;
   pending=false;
   get hasDraft(){return this.draft.trim().length>0;}
 
   load(campaignId:string,history:DmHistory,runtime:DmRuntimeStatus|null,rolls:DiceRoll[]){
-    if(this.campaignId!==campaignId){this.actorId="";this.draft="";this.requestId=null;this.error="";}
+    if(this.campaignId!==campaignId){this.stopProgressPoll();this.actorId="";this.draft="";this.requestId=null;this.error="";}
     this.campaignId=campaignId;this.history=structuredClone(history);this.runtime=runtime;
     this.latestRoll=rolls[0]??null;
     // A refresh after a lost IPC response can recover an already committed turn.
@@ -48,7 +49,7 @@ export class DmPanel {
       </div>
       ${this.history.totalTurns>12?'<p class="subtle">Your earlier turns stay saved. This first version uses recent conversation; include a reminder when returning to older events.</p>':""}
       ${this.error?`<p class="dm-error" role="alert">${e(this.error)}</p>`:""}
-      ${this.pending?`<div class="dm-progress" role="status"><span class="dm-spinner" aria-hidden="true"></span><p>${this.cancelling?"Stopping generation…":"The Dungeon Master is thinking. Loading the model for the first turn can take a moment."}</p><button id="dmCancel" type="button" ${this.cancelling?"disabled":""}>Stop</button></div>`:""}
+      ${this.pending?`<div class="dm-progress" role="status"><span class="dm-spinner" aria-hidden="true"></span><p id="dmProgressMessage">${this.cancelling?"Stopping generation…":this.runtime?.busy?e(this.runtime.message):"Preparing your reply locally. First replies can take several minutes on the CPU."}</p><button id="dmCancel" type="button" ${this.cancelling?"disabled":""}>Stop</button></div>`:""}
       <form id="dmForm"><fieldset ${this.pending?"disabled":""}>
         <label>Speak or act as<select id="dmActor"><option value="">The player / party</option>${characters.map(c=>`<option value="${e(c.id)}" ${c.id===this.actorId?"selected":""}>${e(c.name)}</option>`).join("")}</select></label>
         <label>Your action<textarea id="dmAction" rows="4" maxlength="4000" required placeholder="I approach the gatekeeper and ask about the missing caravan…">${e(this.draft)}</textarea></label>
@@ -60,7 +61,16 @@ export class DmPanel {
     </section>`;
   }
 
+  private stopProgressPoll(){this.progressGeneration++;if(this.progressPoll!==null){clearInterval(this.progressPoll);this.progressPoll=null;}}
+  private pollProgress(root:HTMLElement){
+    if(!this.pending){this.stopProgressPoll();return;}if(this.progressPoll!==null)return;
+    const generation=++this.progressGeneration;let polling=false;
+    this.progressPoll=setInterval(()=>{if(!this.pending){this.stopProgressPoll();return;}if(polling||this.cancelling)return;polling=true;
+      void invoke<DmRuntimeStatus>("dm_runtime_status").then(status=>{if(generation!==this.progressGeneration||!this.pending)return;this.runtime=status;const message=root.querySelector("#dmProgressMessage");if(message&&status.busy&&!this.cancelling)message.textContent=status.message;}).catch(()=>{}).finally(()=>{polling=false;});
+    },1000);
+  }
   bind(root:HTMLElement,context:Context){
+    this.pollProgress(root);
     const textarea=root.querySelector<HTMLTextAreaElement>("#dmAction");
     const actor=root.querySelector<HTMLSelectElement>("#dmActor");
     if(!textarea||!actor)return;
@@ -104,7 +114,7 @@ export class DmPanel {
           await context.onSaved(result.warning);
         }catch(error){this.error=String(error);}
         finally{
-          this.pending=false;this.cancelling=false;context.render();
+          this.pending=false;this.cancelling=false;this.stopProgressPoll();context.render();
           root.querySelector(".dm-turn:last-child")?.scrollIntoView({block:"nearest"});
         }
       })();

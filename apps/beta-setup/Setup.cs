@@ -20,7 +20,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Dungeon World AI Beta Setup")]
 [assembly: AssemblyProduct("Dungeon World AI Beta")]
-[assembly: AssemblyVersion("0.2.1.0")]
+[assembly: AssemblyVersion("0.2.3.0")]
 namespace DungeonWorldAI.Setup {
     public class Installed { public string product; public string version; public string directory; public string productCode; }
     static class Program {

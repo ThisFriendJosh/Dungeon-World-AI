@@ -13,7 +13,7 @@ import sys
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.2.2-beta.1"
+VERSION = "0.2.3-beta.1"
 PRODUCT = "ai.dungeonworld.beta"
 
 
@@ -89,6 +89,8 @@ def source_files(app, llama, python, crt):
             files["ai/" + f.name] = f
     if "ai/llama-server.exe" not in files:
         raise ValueError("The llama CPU runtime is incomplete")
+    if not all("ai/" + name in files for name in ("ggml-cpu-x64.dll", "ggml-cpu-haswell.dll")):
+        raise ValueError("Use the portable CPU-dispatch runtime: baseline x64 and accelerated CPU backends are required")
     # Redistributable private Python: no development venv, unrelated packages, credentials or caches.
     for name in ("python.exe", "pythonw.exe", "python3.dll", "python313.dll", "vcruntime140.dll", "vcruntime140_1.dll", "LICENSE.txt"):
         f = python / name
